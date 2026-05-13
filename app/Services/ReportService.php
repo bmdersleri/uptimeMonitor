@@ -463,28 +463,8 @@ final class ReportService
         if ($token === '' || $chatId === '') {
             return ['status' => 'failed', 'error' => 'Telegram config missing'];
         }
-        if (!function_exists('curl_init')) {
-            return ['status' => 'failed', 'error' => 'PHP curl extension is not available'];
-        }
-
-        $ch = curl_init();
-        curl_setopt_array($ch, [
-            CURLOPT_URL => 'https://api.telegram.org/bot' . rawurlencode($token) . '/sendMessage',
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => http_build_query([
-                'chat_id' => $chatId,
-                'text' => $body,
-            ]),
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 12,
-        ]);
-        $response = curl_exec($ch);
-        $error = $response === false ? curl_error($ch) : null;
-        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        $ok = $error === null && $httpCode >= 200 && $httpCode < 300;
-        return ['status' => $ok ? 'sent' : 'failed', 'error' => $ok ? null : ($error ?: 'Telegram HTTP ' . $httpCode)];
+        $client = new TelegramClient();
+        return $client->sendMessage($token, $chatId, $body);
     }
 
     /**

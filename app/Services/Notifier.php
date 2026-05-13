@@ -283,6 +283,7 @@ final class Notifier
         $token = (string) config('TELEGRAM_BOT_TOKEN', '');
         $chatId = (string) config('TELEGRAM_DEFAULT_CHAT_ID', '');
         $subject = (string) config('notifications.subject_prefix', '[Uptime]') . ' ' . strtoupper($eventType);
+        $client = new TelegramClient();
 
         if ($token === '' || $chatId === '') {
             $error = 'Telegram config missing';
@@ -293,28 +294,9 @@ final class Notifier
             return false;
         }
 
-        $endpoint = 'https://api.telegram.org/bot' . rawurlencode($token) . '/sendMessage';
-        $payload = http_build_query([
-            'chat_id' => $chatId,
-            'text' => $message,
-        ]);
-
-        $ch = curl_init();
-        curl_setopt_array($ch, [
-            CURLOPT_URL => $endpoint,
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => $payload,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 12,
-        ]);
-
-        $body = curl_exec($ch);
-        $curlError = $body === false ? (curl_error($ch) ?: 'curl error') : null;
-        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        $ok = $curlError === null && $httpCode >= 200 && $httpCode < 300;
-        $details = $ok ? null : ($curlError !== null ? $curlError : ('HTTP ' . $httpCode));
+        $result = $client->sendMessage($token, $chatId, $message);
+        $ok = ($result['status'] ?? '') === 'sent';
+        $details = $ok ? null : (string) ($result['error'] ?? 'Telegram send failed');
 
         $this->logNotification($monitorId, $incidentId, $eventType, 'telegram', $ok ? 'sent' : 'failed', $details);
         if (!$ok && $queueOnFail) {

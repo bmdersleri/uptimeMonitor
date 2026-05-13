@@ -68,28 +68,10 @@ function send_test_telegram(): array
     if ((string) config('NOTIFY_TELEGRAM_ENABLED', 'false') !== 'true' || $token === '' || $chatId === '') {
         return ['ok' => false, 'message' => 'Telegram channel is disabled or token/chat id is empty.'];
     }
-    if (!function_exists('curl_init')) {
-        return ['ok' => false, 'message' => 'PHP curl extension is not available.'];
-    }
-
-    $ch = curl_init();
-    curl_setopt_array($ch, [
-        CURLOPT_URL => 'https://api.telegram.org/bot' . rawurlencode($token) . '/sendMessage',
-        CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => http_build_query([
-            'chat_id' => $chatId,
-            'text' => "Uptime Monitor Telegram test\nTime: " . (new DateTimeImmutable('now'))->format('Y-m-d H:i:s'),
-        ]),
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 12,
-    ]);
-    $body = curl_exec($ch);
-    $error = $body === false ? curl_error($ch) : null;
-    $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-
-    $ok = $error === null && $http >= 200 && $http < 300;
-    return ['ok' => $ok, 'message' => $ok ? 'Test Telegram message sent.' : ($error ?: 'Telegram HTTP ' . $http)];
+    $client = new TelegramClient();
+    $result = $client->sendMessage($token, $chatId, "Uptime Monitor Telegram test\nTime: " . (new DateTimeImmutable('now'))->format('Y-m-d H:i:s'));
+    $ok = ($result['status'] ?? '') === 'sent';
+    return ['ok' => $ok, 'message' => $ok ? 'Test Telegram message sent.' : (string) ($result['error'] ?? 'Telegram send failed')];
 }
 
 $pdo = Database::connection();

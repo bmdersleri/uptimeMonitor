@@ -81,6 +81,7 @@ Some repositories include inline `ensure*Column()` methods for lightweight schem
 - `LinkScanResetter` — clears link scan jobs, discovered links, broken links, and live state files while preserving users, monitors, uptime data, notification data, and ignore rules
 - `Notifier` — sends email (PHP `mail()`) and Telegram (bot API) notifications for incidents and broken-link summaries
 - `TelegramClient` — shared Telegram API transport used by notifications, test sends, and report delivery
+- `MailClient` — sends email through SMTP when configured, otherwise falls back to PHP `mail()`
 - `ReportService` — builds daily/weekly operational summaries, sends them through configured email/Telegram channels, and stores delivery status in `report_runs`
 
 ### URL generation
@@ -99,7 +100,7 @@ Three CLI scripts meant to be invoked by system cron:
 - `retry_notifications.php` — processes pending items in the notification retry queue
 - `daily_report.php` and `weekly_report.php` — generate and send report summaries, then store rows in `report_runs`
 
-`ReportService` now stores both plain-text and HTML bodies in `report_runs`. Email sends should remain multipart/plain-text + HTML, while Telegram continues to use the plain-text body. Telegram transport lives in `TelegramClient` so notification, test-send, and report code all preserve the same endpoint behavior. The Notifications screen writes notification settings back to `.env`. The reports screen also exposes type/date filters and CSV export through `/reports_export.php`, and the export should honor the same filters as the table view.
+`ReportService` now stores both plain-text and HTML bodies in `report_runs`. Email sends should remain multipart/plain-text + HTML, while Telegram continues to use the plain-text body. Telegram transport lives in `TelegramClient` so notification, test-send, and report code all preserve the same endpoint behavior. Email transport lives in `MailClient`; if `SMTP_HOST` is set, SMTP is used, otherwise the app falls back to PHP `mail()`. The Notifications screen writes notification settings back to `.env`. The reports screen also exposes type/date filters and CSV export through `/reports_export.php`, and the export should honor the same filters as the table view.
 
 Manual scans are started by `public/link_scan_run.php`. When shell execution is available, it delegates to `LinkScanProcessLauncher`, which starts `cron/run_manual_link_scan.php` outside the HTTP request. Shared hosting may execute `/usr/bin/php` as CGI/FastCGI instead of CLI; the manual worker therefore rejects direct browser execution but can accept shell-provided `$argv` or `UPTIME_MONITOR_ID` / `UPTIME_MAX_DEPTH` environment values.
 

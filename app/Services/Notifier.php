@@ -257,13 +257,10 @@ final class Notifier
             return false;
         }
 
-        $headers = [
-            'MIME-Version: 1.0',
-            'Content-Type: text/plain; charset=UTF-8',
-        ];
-
-        $ok = @mail($to, $subject, $message, implode("\r\n", $headers));
-        $error = $ok ? null : 'mail() returned false';
+        $client = new MailClient();
+        $result = $client->sendConfigured($to, $subject, $message);
+        $ok = ($result['status'] ?? '') === 'sent';
+        $error = $ok ? null : (string) ($result['error'] ?? 'mail send failed');
         $this->logNotification($monitorId, $incidentId, $eventType, 'email', $ok ? 'sent' : 'failed', $error);
 
         if (!$ok && $queueOnFail) {

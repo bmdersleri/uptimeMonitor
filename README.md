@@ -13,7 +13,7 @@ Live site:
 - Cron-based uptime checks
 - Incident open/recovery tracking
 - Email and Telegram notification infrastructure
-- Notification settings and test-send screen at `/notifications.php` with `.env` persistence
+- Notification settings and test-send screen at `/notifications.php` with `.env` persistence and optional SMTP delivery
 - Notification retry queue and retry worker
 - Daily and weekly operational reports with email/Telegram delivery
 - Report history and resend screen at `/reports.php`
@@ -267,13 +267,21 @@ Notification values:
 ```env
 NOTIFY_EMAIL_ENABLED=false
 NOTIFY_EMAIL_TO=
+NOTIFY_EMAIL_FROM=
+NOTIFY_EMAIL_FROM_NAME=Ekont Uptime Monitor
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USERNAME=
+SMTP_PASSWORD=
+SMTP_ENCRYPTION=tls
+SMTP_TIMEOUT_SECONDS=15
 NOTIFY_TELEGRAM_ENABLED=false
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_DEFAULT_CHAT_ID=
 NOTIFY_RETRY_BATCH_SIZE=30
 ```
 
-You can also edit these values from `/notifications.php`; the form writes the same keys back to `.env`.
+You can also edit these values from `/notifications.php`; the form writes the same keys back to `.env`. If `SMTP_HOST` is empty, email falls back to PHP `mail()`. If SMTP host is set, the app uses SMTP instead.
 
 Broken-link notification throttling is configured in `config/notifications.php`.
 

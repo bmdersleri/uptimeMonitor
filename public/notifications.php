@@ -57,8 +57,11 @@ function send_test_email(): array
 
     $subject = (string) config('notifications.subject_prefix', '[Uptime]') . ' TEST';
     $message = "Uptime Monitor test email\nTime: " . (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
-    $ok = @mail($to, $subject, $message, "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8");
-    return ['ok' => $ok, 'message' => $ok ? 'Test email sent.' : 'mail() returned false.'];
+    $client = new MailClient();
+    $result = $client->sendConfigured($to, $subject, $message);
+    $ok = ($result['status'] ?? '') === 'sent';
+    $transport = (string) ($result['transport'] ?? 'mail');
+    return ['ok' => $ok, 'message' => $ok ? 'Test email sent via ' . $transport . '.' : (string) ($result['error'] ?? 'Email send failed')];
 }
 
 function send_test_telegram(): array
@@ -111,9 +114,17 @@ function notifications_current_settings(): array
     return [
         'notify_email_enabled' => strtolower(trim((string) config('NOTIFY_EMAIL_ENABLED', 'false'))) === 'true' ? 'true' : 'false',
         'notify_email_to' => (string) config('NOTIFY_EMAIL_TO', ''),
+        'notify_email_from' => (string) config('NOTIFY_EMAIL_FROM', ''),
+        'notify_email_from_name' => (string) config('NOTIFY_EMAIL_FROM_NAME', ''),
         'notify_telegram_enabled' => strtolower(trim((string) config('NOTIFY_TELEGRAM_ENABLED', 'false'))) === 'true' ? 'true' : 'false',
         'telegram_bot_token' => (string) config('TELEGRAM_BOT_TOKEN', ''),
         'telegram_default_chat_id' => (string) config('TELEGRAM_DEFAULT_CHAT_ID', ''),
+        'smtp_host' => (string) config('SMTP_HOST', ''),
+        'smtp_port' => (string) config('SMTP_PORT', '587'),
+        'smtp_username' => (string) config('SMTP_USERNAME', ''),
+        'smtp_password' => (string) config('SMTP_PASSWORD', ''),
+        'smtp_encryption' => (string) config('SMTP_ENCRYPTION', 'tls'),
+        'smtp_timeout_seconds' => (string) config('SMTP_TIMEOUT_SECONDS', '15'),
     ];
 }
 
@@ -129,9 +140,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $postedSettings = [
         'notify_email_enabled' => isset($_POST['notify_email_enabled']) ? 'true' : 'false',
         'notify_email_to' => trim((string) ($_POST['notify_email_to'] ?? '')),
+        'notify_email_from' => trim((string) ($_POST['notify_email_from'] ?? '')),
+        'notify_email_from_name' => trim((string) ($_POST['notify_email_from_name'] ?? '')),
         'notify_telegram_enabled' => isset($_POST['notify_telegram_enabled']) ? 'true' : 'false',
         'telegram_bot_token' => trim((string) ($_POST['telegram_bot_token'] ?? '')),
         'telegram_default_chat_id' => trim((string) ($_POST['telegram_default_chat_id'] ?? '')),
+        'smtp_host' => trim((string) ($_POST['smtp_host'] ?? '')),
+        'smtp_port' => trim((string) ($_POST['smtp_port'] ?? '')),
+        'smtp_username' => trim((string) ($_POST['smtp_username'] ?? '')),
+        'smtp_password' => trim((string) ($_POST['smtp_password'] ?? '')),
+        'smtp_encryption' => trim((string) ($_POST['smtp_encryption'] ?? 'tls')),
+        'smtp_timeout_seconds' => trim((string) ($_POST['smtp_timeout_seconds'] ?? '15')),
     ];
 
     if ($action === 'save_settings') {
@@ -139,9 +158,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $saveValues = [
             'notify_email_enabled' => $settings['notify_email_enabled'],
             'notify_email_to' => $settings['notify_email_to'] !== '' ? $settings['notify_email_to'] : $currentSettings['notify_email_to'],
+            'notify_email_from' => $settings['notify_email_from'] !== '' ? $settings['notify_email_from'] : $currentSettings['notify_email_from'],
+            'notify_email_from_name' => $settings['notify_email_from_name'] !== '' ? $settings['notify_email_from_name'] : $currentSettings['notify_email_from_name'],
             'notify_telegram_enabled' => $settings['notify_telegram_enabled'],
             'telegram_bot_token' => $settings['telegram_bot_token'] !== '' ? $settings['telegram_bot_token'] : $currentSettings['telegram_bot_token'],
             'telegram_default_chat_id' => $settings['telegram_default_chat_id'] !== '' ? $settings['telegram_default_chat_id'] : $currentSettings['telegram_default_chat_id'],
+            'smtp_host' => $settings['smtp_host'] !== '' ? $settings['smtp_host'] : $currentSettings['smtp_host'],
+            'smtp_port' => $settings['smtp_port'] !== '' ? $settings['smtp_port'] : $currentSettings['smtp_port'],
+            'smtp_username' => $settings['smtp_username'] !== '' ? $settings['smtp_username'] : $currentSettings['smtp_username'],
+            'smtp_password' => $settings['smtp_password'] !== '' ? $settings['smtp_password'] : $currentSettings['smtp_password'],
+            'smtp_encryption' => $settings['smtp_encryption'] !== '' ? strtolower($settings['smtp_encryption']) : strtolower($currentSettings['smtp_encryption']),
+            'smtp_timeout_seconds' => $settings['smtp_timeout_seconds'] !== '' ? $settings['smtp_timeout_seconds'] : $currentSettings['smtp_timeout_seconds'],
         ];
         $errors = [];
 
@@ -159,15 +186,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $errors[] = 'Telegram etkinse chat id zorunludur.';
             }
         }
+        if ($saveValues['smtp_host'] !== '') {
+            if (!is_numeric($saveValues['smtp_port']) || (int) $saveValues['smtp_port'] < 1) {
+                $errors[] = 'SMTP port gecersiz.';
+            }
+            if ($saveValues['smtp_encryption'] !== 'none' && $saveValues['smtp_encryption'] !== 'tls' && $saveValues['smtp_encryption'] !== 'ssl') {
+                $errors[] = 'SMTP encryption none, tls veya ssl olmali.';
+            }
+            if ($saveValues['smtp_timeout_seconds'] !== '' && (!is_numeric($saveValues['smtp_timeout_seconds']) || (int) $saveValues['smtp_timeout_seconds'] < 5)) {
+                $errors[] = 'SMTP timeout en az 5 saniye olmali.';
+            }
+            if ($saveValues['smtp_username'] !== '' && $saveValues['smtp_password'] === '' && (string) $currentSettings['smtp_password'] === '') {
+                $errors[] = 'SMTP username girildiyse sifre de girilmelidir.';
+            }
+            if ($saveValues['notify_email_from'] !== '' && filter_var($saveValues['notify_email_from'], FILTER_VALIDATE_EMAIL) === false) {
+                $errors[] = 'Gecerli bir gönderen email adresi girin.';
+            }
+        }
 
         if ($errors === []) {
             try {
                 config_update_env_values([
                     'NOTIFY_EMAIL_ENABLED' => $saveValues['notify_email_enabled'],
                     'NOTIFY_EMAIL_TO' => $saveValues['notify_email_to'],
+                    'NOTIFY_EMAIL_FROM' => $saveValues['notify_email_from'],
+                    'NOTIFY_EMAIL_FROM_NAME' => $saveValues['notify_email_from_name'],
                     'NOTIFY_TELEGRAM_ENABLED' => $saveValues['notify_telegram_enabled'],
                     'TELEGRAM_BOT_TOKEN' => $saveValues['telegram_bot_token'],
                     'TELEGRAM_DEFAULT_CHAT_ID' => $saveValues['telegram_default_chat_id'],
+                    'SMTP_HOST' => $saveValues['smtp_host'],
+                    'SMTP_PORT' => (string) ((int) $saveValues['smtp_port']),
+                    'SMTP_USERNAME' => $saveValues['smtp_username'],
+                    'SMTP_PASSWORD' => $saveValues['smtp_password'],
+                    'SMTP_ENCRYPTION' => $saveValues['smtp_encryption'],
+                    'SMTP_TIMEOUT_SECONDS' => (string) ((int) $saveValues['smtp_timeout_seconds']),
                 ]);
                 notifications_flash_notice(['ok' => true, 'message' => 'Notification settings saved.']);
                 redirect_to('/notifications.php');
@@ -199,7 +251,7 @@ $logs = recent_notification_logs($pdo);
         :root { --accent:#0ea5e9; --danger:#ef4444; --success:#10b981; --text:#0f172a; --muted:#475569; --card:rgba(255,255,255,0.86); --line:rgba(148,163,184,0.35); --bg1:#f8fafc; --bg2:#ecfeff; }
         html[data-theme="dark"] { --text:#e2e8f0; --muted:#94a3b8; --card:rgba(15,23,42,0.84); --line:rgba(71,85,105,0.5); --bg1:#0b1220; --bg2:#111827; }
         *{box-sizing:border-box} body{margin:0;min-height:100vh;color:var(--text);font-family:"IBM Plex Sans","Segoe UI",Arial,sans-serif;background:radial-gradient(circle at 8% 10%,rgba(14,165,233,.16),transparent 32%),radial-gradient(circle at 92% 18%,rgba(16,185,129,.14),transparent 30%),linear-gradient(160deg,var(--bg1),var(--bg2));}
-        .shell{width:min(1200px,94vw);margin:24px auto 36px}.topbar,.card,.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;backdrop-filter:blur(8px);box-shadow:0 10px 26px rgba(15,23,42,.05)}.topbar{padding:18px 20px;display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap}.title{margin:0;font-size:1.65rem}.subtitle{margin:5px 0 0;color:var(--muted)}.actions{display:flex;gap:8px;flex-wrap:wrap}.btn{border:1px solid var(--line);border-radius:11px;background:rgba(255,255,255,.76);color:var(--text);padding:9px 12px;text-decoration:none;font-weight:700;cursor:pointer}html[data-theme="dark"] .btn{background:rgba(30,41,59,.92);color:#e2e8f0}.btn-primary{color:#fff;border-color:transparent;background:linear-gradient(135deg,var(--accent),#0284c7)}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:14px}.card,.panel{padding:14px}.panel{margin-top:12px;overflow:hidden}.panel-head{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}.panel-title{margin:0;font-size:1.12rem}.muted{color:var(--muted)}.k{color:var(--muted);font-size:.82rem}.v{margin-top:6px;font-size:1.45rem;font-weight:800}.ok{color:var(--success)}.bad{color:var(--danger)}table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{border-bottom:1px solid var(--line);padding:10px;text-align:left;vertical-align:top}th{font-size:.75rem;text-transform:uppercase;color:var(--muted);background:rgba(148,163,184,.08)}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.8rem;word-break:break-all}.notice{margin-top:12px;border-radius:12px;padding:10px}.notice.ok-bg{background:rgba(16,185,129,.14);border:1px solid rgba(16,185,129,.32);color:#065f46}.notice.err-bg{background:rgba(239,68,68,.14);border:1px solid rgba(239,68,68,.32);color:#7f1d1d}html[data-theme="dark"] .notice.ok-bg{color:#bbf7d0}html[data-theme="dark"] .notice.err-bg{color:#fecaca}.channel-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}.settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field label{display:block;margin:0 0 6px;font-size:.84rem;font-weight:700;color:var(--muted)}.field input[type="text"],.field input[type="email"]{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.82);color:var(--text)}html[data-theme="dark"] .field input[type="text"],html[data-theme="dark"] .field input[type="email"]{background:rgba(15,23,42,.82)}.field input[type="text"]:focus,.field input[type="email"]:focus{outline:2px solid rgba(14,165,233,.25);border-color:var(--accent)}.switch-row{display:flex;align-items:center;gap:10px;padding:10px 0 4px}.switch-row input{width:16px;height:16px}.help{margin-top:5px;font-size:.82rem;color:var(--muted);line-height:1.4}.form-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.setting-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px}.setting-pill{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:rgba(148,163,184,.06)}.setting-pill .label{display:block;font-size:.76rem;color:var(--muted);text-transform:uppercase;letter-spacing:.02em}.setting-pill .value{display:block;margin-top:4px;font-weight:800;word-break:break-word}.settings-intro{margin:8px 0 0;color:var(--muted);line-height:1.5}.settings-header{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}.settings-actions{display:flex;gap:8px;flex-wrap:wrap}@media(max-width:900px){.grid,.channel-grid,.settings-grid,.setting-summary{grid-template-columns:1fr}}
+        .shell{width:min(1200px,94vw);margin:24px auto 36px}.topbar,.card,.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;backdrop-filter:blur(8px);box-shadow:0 10px 26px rgba(15,23,42,.05)}.topbar{padding:18px 20px;display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap}.title{margin:0;font-size:1.65rem}.subtitle{margin:5px 0 0;color:var(--muted)}.actions{display:flex;gap:8px;flex-wrap:wrap}.btn{border:1px solid var(--line);border-radius:11px;background:rgba(255,255,255,.76);color:var(--text);padding:9px 12px;text-decoration:none;font-weight:700;cursor:pointer}html[data-theme="dark"] .btn{background:rgba(30,41,59,.92);color:#e2e8f0}.btn-primary{color:#fff;border-color:transparent;background:linear-gradient(135deg,var(--accent),#0284c7)}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:14px}.card,.panel{padding:14px}.panel{margin-top:12px;overflow:hidden}.panel-head{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}.panel-title{margin:0;font-size:1.12rem}.muted{color:var(--muted)}.k{color:var(--muted);font-size:.82rem}.v{margin-top:6px;font-size:1.45rem;font-weight:800}.ok{color:var(--success)}.bad{color:var(--danger)}table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{border-bottom:1px solid var(--line);padding:10px;text-align:left;vertical-align:top}th{font-size:.75rem;text-transform:uppercase;color:var(--muted);background:rgba(148,163,184,.08)}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.8rem;word-break:break-all}.notice{margin-top:12px;border-radius:12px;padding:10px}.notice.ok-bg{background:rgba(16,185,129,.14);border:1px solid rgba(16,185,129,.32);color:#065f46}.notice.err-bg{background:rgba(239,68,68,.14);border:1px solid rgba(239,68,68,.32);color:#7f1d1d}html[data-theme="dark"] .notice.ok-bg{color:#bbf7d0}html[data-theme="dark"] .notice.err-bg{color:#fecaca}.channel-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}.settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field label{display:block;margin:0 0 6px;font-size:.84rem;font-weight:700;color:var(--muted)}.field input[type="text"],.field input[type="email"],.field select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.82);color:var(--text)}html[data-theme="dark"] .field input[type="text"],html[data-theme="dark"] .field input[type="email"],html[data-theme="dark"] .field select{background:rgba(15,23,42,.82)}.field input[type="text"]:focus,.field input[type="email"]:focus,.field select:focus{outline:2px solid rgba(14,165,233,.25);border-color:var(--accent)}.switch-row{display:flex;align-items:center;gap:10px;padding:10px 0 4px}.switch-row input{width:16px;height:16px}.help{margin-top:5px;font-size:.82rem;color:var(--muted);line-height:1.4}.form-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.setting-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:12px}.setting-pill{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:rgba(148,163,184,.06)}.setting-pill .label{display:block;font-size:.76rem;color:var(--muted);text-transform:uppercase;letter-spacing:.02em}.setting-pill .value{display:block;margin-top:4px;font-weight:800;word-break:break-word}.settings-intro{margin:8px 0 0;color:var(--muted);line-height:1.5}.settings-header{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}.settings-actions{display:flex;gap:8px;flex-wrap:wrap}@media(max-width:900px){.grid,.channel-grid,.settings-grid,.setting-summary{grid-template-columns:1fr}}
     </style>
 </head>
 <body>
@@ -233,7 +285,8 @@ $logs = recent_notification_logs($pdo);
         <div class="setting-summary">
             <div class="setting-pill"><span class="label">Email durumu</span><span class="value"><?= e((string) config('NOTIFY_EMAIL_ENABLED', 'false')); ?></span></div>
             <div class="setting-pill"><span class="label">Telegram durumu</span><span class="value"><?= e((string) config('NOTIFY_TELEGRAM_ENABLED', 'false')); ?></span></div>
-            <div class="setting-pill"><span class="label">Kaydedilen hedef</span><span class="value"><?= e((string) config('NOTIFY_EMAIL_TO', '')); ?></span></div>
+            <div class="setting-pill"><span class="label">Email hedefi</span><span class="value"><?= e((string) config('NOTIFY_EMAIL_TO', '')); ?></span></div>
+            <div class="setting-pill"><span class="label">SMTP host</span><span class="value"><?= e((string) config('SMTP_HOST', '') !== '' ? (string) config('SMTP_HOST', '') : 'mail() fallback'); ?></span></div>
         </div>
         <form method="post">
             <input type="hidden" name="action" value="save_settings">
@@ -248,6 +301,16 @@ $logs = recent_notification_logs($pdo);
                     <label for="telegram_default_chat_id">Telegram chat id</label>
                     <input id="telegram_default_chat_id" name="telegram_default_chat_id" type="text" value="<?= e((string) $settings['telegram_default_chat_id']); ?>" placeholder="123456789">
                     <div class="help">Telegram etkinse bu alan zorunludur. Bos birakirsaniz mevcut deger korunur.</div>
+                </div>
+                <div class="field">
+                    <label for="notify_email_from">Gönderen email</label>
+                    <input id="notify_email_from" name="notify_email_from" type="email" value="<?= e((string) $settings['notify_email_from']); ?>" placeholder="noreply@example.com">
+                    <div class="help">SMTP kullanıyorsaniz tavsiye edilir. Bos bırakabilirsiniz.</div>
+                </div>
+                <div class="field">
+                    <label for="notify_email_from_name">Gönderen adı</label>
+                    <input id="notify_email_from_name" name="notify_email_from_name" type="text" value="<?= e((string) $settings['notify_email_from_name']); ?>" placeholder="Ekont Uptime Monitor">
+                    <div class="help">Mail kutusunda gözüken isim.</div>
                 </div>
                 <div class="field">
                     <div class="switch-row">
@@ -267,6 +330,40 @@ $logs = recent_notification_logs($pdo);
                     <label for="telegram_bot_token">Telegram bot token</label>
                     <input id="telegram_bot_token" name="telegram_bot_token" type="text" value="<?= e((string) $settings['telegram_bot_token']); ?>" placeholder="123456:ABCDEF...">
                     <div class="help">Bos birakirsaniz mevcut deger korunur. Token degisti ise yeni degeri buraya girin.</div>
+                </div>
+                <div class="field">
+                    <label for="smtp_host">SMTP host</label>
+                    <input id="smtp_host" name="smtp_host" type="text" value="<?= e((string) $settings['smtp_host']); ?>" placeholder="smtp.gmail.com">
+                    <div class="help">Boşsa PHP mail() kullanılır. Doluysa SMTP ile gönderim yapılır.</div>
+                </div>
+                <div class="field">
+                    <label for="smtp_port">SMTP port</label>
+                    <input id="smtp_port" name="smtp_port" type="text" value="<?= e((string) $settings['smtp_port']); ?>" placeholder="587">
+                    <div class="help">Genellikle 587 (tls) veya 465 (ssl).</div>
+                </div>
+                <div class="field">
+                    <label for="smtp_username">SMTP kullanıcı adı</label>
+                    <input id="smtp_username" name="smtp_username" type="text" value="<?= e((string) $settings['smtp_username']); ?>" placeholder="user@example.com">
+                    <div class="help">Gmail kullanıyorsanız genellikle tam email adresidir.</div>
+                </div>
+                <div class="field">
+                    <label for="smtp_password">SMTP şifre / app password</label>
+                    <input id="smtp_password" name="smtp_password" type="password" value="" placeholder="Mevcut değer korunur">
+                    <div class="help">Boş bırakırsanız kayıtlı şifre korunur.</div>
+                </div>
+                <div class="field">
+                    <label for="smtp_encryption">SMTP encryption</label>
+                    <select id="smtp_encryption" name="smtp_encryption">
+                        <option value="none" <?= (string) $settings['smtp_encryption'] === 'none' ? 'selected' : ''; ?>>none</option>
+                        <option value="tls" <?= (string) $settings['smtp_encryption'] === 'tls' ? 'selected' : ''; ?>>tls</option>
+                        <option value="ssl" <?= (string) $settings['smtp_encryption'] === 'ssl' ? 'selected' : ''; ?>>ssl</option>
+                    </select>
+                    <div class="help">TLS 587 için, SSL 465 için yaygındır.</div>
+                </div>
+                <div class="field">
+                    <label for="smtp_timeout_seconds">SMTP timeout</label>
+                    <input id="smtp_timeout_seconds" name="smtp_timeout_seconds" type="text" value="<?= e((string) $settings['smtp_timeout_seconds']); ?>" placeholder="15">
+                    <div class="help">Saniye cinsinden. En az 5 önerilir.</div>
                 </div>
             </div>
             <div class="form-actions">

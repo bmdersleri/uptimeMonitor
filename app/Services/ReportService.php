@@ -421,32 +421,12 @@ final class ReportService
         if ($to === '') {
             return ['status' => 'failed', 'error' => 'NOTIFY_EMAIL_TO not set'];
         }
-
-        $headers = [
-            'MIME-Version: 1.0',
-            'Content-Type: text/plain; charset=UTF-8',
+        $client = new MailClient();
+        $result = $client->sendConfigured($to, $subject, $body, $htmlBody);
+        return [
+            'status' => (string) ($result['status'] ?? 'failed'),
+            'error' => $result['error'],
         ];
-        $payload = $body;
-
-        if (is_string($htmlBody) && $htmlBody !== '') {
-            $boundary = '=_uptime_report_' . bin2hex(random_bytes(12));
-            $headers = [
-                'MIME-Version: 1.0',
-                'Content-Type: multipart/alternative; boundary="' . $boundary . '"',
-            ];
-            $payload = "--{$boundary}\r\n"
-                . "Content-Type: text/plain; charset=UTF-8\r\n"
-                . "Content-Transfer-Encoding: 8bit\r\n\r\n"
-                . $body . "\r\n"
-                . "--{$boundary}\r\n"
-                . "Content-Type: text/html; charset=UTF-8\r\n"
-                . "Content-Transfer-Encoding: 8bit\r\n\r\n"
-                . $htmlBody . "\r\n"
-                . "--{$boundary}--";
-        }
-
-        $ok = @mail($to, $subject, $payload, implode("\r\n", $headers));
-        return ['status' => $ok ? 'sent' : 'failed', 'error' => $ok ? null : 'mail() returned false'];
     }
 
     /**

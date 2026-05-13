@@ -155,6 +155,14 @@ final class LinkScanRepository
     /**
      * @return array<string, mixed>|null
      */
+    public function findAnyRunningWithMonitor(): ?array
+    {
+        return $this->findRunningWithMonitor(0);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
     public function findWithMonitor(int $jobId): ?array
     {
         $sql = "

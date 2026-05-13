@@ -13,22 +13,35 @@ $monitorId = isset($_GET['monitor_id']) ? (int) $_GET['monitor_id'] : 0;
 
 $staleMinutes = max(10, (int) config('DEFAULT_LINK_SCAN_STALE_AFTER_MINUTES', '60'));
 $now = new DateTimeImmutable('now');
-$threshold = $now->sub(new DateInterval('PT' . $staleMinutes . 'M'))->format('Y-m-d H:i:s');
-$finishedAt = $now->format('Y-m-d H:i:s');
-$staleStmt = $pdo->prepare("
-    UPDATE link_scan_jobs
-    SET
-        finished_at = :finished_at,
-        status = 'failed',
-        duration_seconds = MAX(0, CAST(strftime('%s', :finished_at) AS INTEGER) - CAST(strftime('%s', started_at) AS INTEGER)),
-        error_message = 'Marked stale automatically'
-    WHERE status = 'running'
-      AND started_at <= :threshold
-");
-$staleStmt->execute([
-    'finished_at' => $finishedAt,
-    'threshold' => $threshold,
-]);
+$cleanupDir = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'link_scan_live';
+if (!is_dir($cleanupDir)) {
+    @mkdir($cleanupDir, 0775, true);
+}
+$cleanupMarker = $cleanupDir . DIRECTORY_SEPARATOR . '.stale_cleanup';
+$cleanupDue = !is_file($cleanupMarker) || (time() - (int) @filemtime($cleanupMarker)) >= 60;
+if ($cleanupDue) {
+    @touch($cleanupMarker);
+    $threshold = $now->sub(new DateInterval('PT' . $staleMinutes . 'M'))->format('Y-m-d H:i:s');
+    $finishedAt = $now->format('Y-m-d H:i:s');
+    try {
+        $staleStmt = $pdo->prepare("
+            UPDATE link_scan_jobs
+            SET
+                finished_at = :finished_at,
+                status = 'failed',
+                duration_seconds = MAX(0, CAST(strftime('%s', :finished_at) AS INTEGER) - CAST(strftime('%s', started_at) AS INTEGER)),
+                error_message = 'Marked stale automatically'
+            WHERE status = 'running'
+              AND started_at <= :threshold
+        ");
+        $staleStmt->execute([
+            'finished_at' => $finishedAt,
+            'threshold' => $threshold,
+        ]);
+    } catch (Throwable $e) {
+        // Status polling should not block live progress if SQLite is briefly busy.
+    }
+}
 
 $counts = $scanRepo->quickCounts();
 $running = $scanRepo->findRunningWithMonitor($monitorId);
@@ -48,7 +61,7 @@ if (is_array($running)) {
             if (is_string($json) && $json !== '') {
                 $decoded = json_decode($json, true);
                 if (is_array($decoded)) {
-                    $live = $decoded;
+                    $live = LinkScanRunner::enrichLiveStateForStatus($decoded, $running, $now);
                 }
             }
         }

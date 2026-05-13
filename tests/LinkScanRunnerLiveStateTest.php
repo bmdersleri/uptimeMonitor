@@ -18,6 +18,27 @@ final class VerboseLiveStateScanner extends LinkScanner
                 'broken_count' => 0,
             ]);
             $onProgress([
+                'type' => 'page_fetch_start',
+                'current_url' => $baseUrl,
+                'depth' => 0,
+                'page_count' => 1,
+                'checked_count' => 0,
+                'broken_count' => 0,
+                'queue_size' => 0,
+            ]);
+            $onProgress([
+                'type' => 'page_fetch_done',
+                'current_url' => $baseUrl,
+                'depth' => 0,
+                'page_count' => 1,
+                'checked_count' => 0,
+                'broken_count' => 0,
+                'queue_size' => 0,
+                'ok' => true,
+                'status_code' => 200,
+                'error_message' => '',
+            ]);
+            $onProgress([
                 'type' => 'page_resources_found',
                 'current_url' => $baseUrl,
                 'depth' => 0,
@@ -28,6 +49,21 @@ final class VerboseLiveStateScanner extends LinkScanner
             ]);
 
             for ($i = 1; $i <= 205; $i++) {
+                if ($i === 1) {
+                    $onProgress([
+                        'type' => 'resource_batch_start',
+                        'current_url' => $baseUrl,
+                        'target_url' => $baseUrl . '/resource-' . $i . '.png',
+                        'depth' => 0,
+                        'page_count' => 1,
+                        'checked_count' => 0,
+                        'broken_count' => 0,
+                        'resource_count' => 5,
+                        'batch_index' => 1,
+                        'batch_total' => 41,
+                        'queue_size' => 0,
+                    ]);
+                }
                 $onProgress([
                     'type' => 'resource_checked',
                     'source_url' => $baseUrl,
@@ -40,6 +76,19 @@ final class VerboseLiveStateScanner extends LinkScanner
                     'broken_count' => 0,
                 ]);
             }
+
+            $onProgress([
+                'type' => 'resource_batch_done',
+                'current_url' => $baseUrl,
+                'depth' => 0,
+                'page_count' => 1,
+                'checked_count' => 205,
+                'broken_count' => 0,
+                'resource_count' => 5,
+                'batch_index' => 41,
+                'batch_total' => 41,
+                'queue_size' => 0,
+            ]);
         }
 
         return [
@@ -98,5 +147,36 @@ assert_true_live_state(is_array($state), 'Live-state JSON should decode');
 assert_true_live_state((int) ($state['pages_crawled'] ?? 0) === 1, 'Live state should separate crawled pages from check targets');
 assert_true_live_state((int) ($state['estimated_checks'] ?? 0) === 205, 'Live state should expose estimated check target count');
 assert_true_live_state(count((array) ($state['recent'] ?? [])) === 200, 'Live state should keep the latest 200 checked links');
+assert_true_live_state((string) ($state['phase'] ?? '') === 'completed', 'Completed live state should expose a final phase');
+assert_true_live_state((string) ($state['heartbeat_at'] ?? '') !== '', 'Live state should expose heartbeat time');
+assert_true_live_state((string) ($state['last_progress_at'] ?? '') !== '', 'Live state should expose last progress time');
+assert_true_live_state((int) ($state['progress_percent'] ?? 0) === 100, 'Completed live state should expose 100 percent progress');
+
+$fresh = LinkScanRunner::enrichLiveStateForStatus([
+    'status' => 'running',
+    'heartbeat_at' => '2026-05-13 12:00:00',
+    'checked_urls' => 10,
+    'estimated_checks' => 20,
+], ['status' => 'running'], new DateTimeImmutable('2026-05-13 12:00:10'));
+assert_true_live_state(is_array($fresh), 'Fresh status live state should be returned');
+assert_true_live_state((bool) ($fresh['stalled'] ?? true) === false, 'Fresh live state should not be stalled');
+assert_true_live_state((int) ($fresh['progress_percent'] ?? 0) === 50, 'Status live state should include progress percent');
+
+$stalled = LinkScanRunner::enrichLiveStateForStatus([
+    'status' => 'running',
+    'heartbeat_at' => '2026-05-13 12:00:00',
+    'checked_urls' => 10,
+    'estimated_checks' => 20,
+], ['status' => 'running'], new DateTimeImmutable('2026-05-13 12:00:25'));
+assert_true_live_state((bool) ($stalled['stalled'] ?? false) === true, 'Live state should become stalled after the warning threshold');
+assert_true_live_state((bool) ($stalled['needs_attention'] ?? true) === false, 'Live state should not need attention before the strong threshold');
+
+$attention = LinkScanRunner::enrichLiveStateForStatus([
+    'status' => 'running',
+    'heartbeat_at' => '2026-05-13 12:00:00',
+    'checked_urls' => 10,
+    'estimated_checks' => 20,
+], ['status' => 'running'], new DateTimeImmutable('2026-05-13 12:01:05'));
+assert_true_live_state((bool) ($attention['needs_attention'] ?? false) === true, 'Live state should need attention after the strong threshold');
 
 echo "LinkScanRunnerLiveStateTest OK\n";

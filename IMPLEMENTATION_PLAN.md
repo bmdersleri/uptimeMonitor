@@ -26,6 +26,8 @@ Completed:
 - Paginated broken-link list with filters and resolved-record cleanup
 - Broken-link ignore rules with target/source/either matching
 - Link scan jobs screen with live progress
+- Link scan heartbeat metadata, stalled-scan warnings, and live running-row updates
+- Single active link-scan job policy for SQLite/shared-hosting reliability
 - Link scan job deletion from the jobs screen
 - Paginated link scan job history with date and record-count filters
 - Bulk cleanup for completed/failed link scan jobs
@@ -54,6 +56,8 @@ Live deployment target:
 - Default link scan resource-check concurrency is `5`.
 - Default per-resource link scan request timeout is `6` seconds.
 - Link scan jobs still marked running after `60` minutes are closed as failed automatically.
+- Link scan jobs warn as possibly stalled after `20` seconds without heartbeat and as needing attention after `60` seconds, but they are not auto-failed by those warnings.
+- Only one link-scan job may run at a time to avoid SQLite write contention and shared-hosting process pressure.
 - Manual scans can override depth for that run without changing the saved monitor setting.
 - Broken-link ignore rules are evaluated during scan result persistence, so ignored links do not re-enter the active broken-link queue.
 
@@ -75,6 +79,10 @@ Page links are queued for crawling when:
 - the page has not already been visited.
 
 Resources are checked with `HEAD` first and then `GET` as a fallback. Resource checks discovered on the same page are processed in bounded parallel batches controlled by `DEFAULT_LINK_SCAN_CONCURRENCY`, with per-resource timeout controlled by `DEFAULT_LINK_SCAN_REQUEST_TIMEOUT_SECONDS`. Broken resources are persisted in `broken_links`, and scan jobs are persisted in `link_scan_jobs`.
+
+The runner writes live state for page fetch start/end, resource batch start/end, and individual resource checks. The live status endpoint enriches this state with `stalled`, `needs_attention`, `stale_seconds`, and `progress_percent`, allowing `/link_scans.php` to keep the active job row and progress panel current even while the final job row has not been persisted yet.
+
+Running progress uses the live JSON file as the primary source while a job is active. Database progress writes are throttled and best-effort, and status polling throttles stale cleanup writes to avoid blocking the scanner.
 
 Ignored broken-link rules are stored in `broken_link_ignore_rules`. They support `contains`, `exact`, and `regex` matching against the target URL, source URL, or either value. When an active broken link is ignored from the UI, an exact target rule is created and the current row is marked resolved/ignored.
 
@@ -119,6 +127,7 @@ Completed:
 - Link scanner worker
 - Link scan jobs table
 - Live scan status endpoint
+- Live heartbeat, phase, last-update, and stalled-warning UI
 - Job deletion endpoint for scan history cleanup
 - Scan quality report for selected jobs
 - Job pagination, date filters, and bulk cleanup
@@ -186,6 +195,9 @@ DEFAULT_LINK_SCAN_MAX_DEPTH=3
 DEFAULT_LINK_SCAN_CONCURRENCY=5
 DEFAULT_LINK_SCAN_REQUEST_TIMEOUT_SECONDS=6
 DEFAULT_LINK_SCAN_STALE_AFTER_MINUTES=60
+DEFAULT_LINK_SCAN_STALL_WARNING_SECONDS=20
+DEFAULT_LINK_SCAN_STALL_ATTENTION_SECONDS=60
+LINK_SCAN_BATCH_SIZE=5
 ```
 
 3. Run:

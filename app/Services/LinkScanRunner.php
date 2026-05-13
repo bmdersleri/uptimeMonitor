@@ -38,6 +38,51 @@ final class LinkScanRunner
     }
 
     /**
+     * @param array<string, mixed>|null $live
+     * @param array<string, mixed>|null $running
+     * @return array<string, mixed>|null
+     */
+    public static function enrichLiveStateForStatus(?array $live, ?array $running = null, ?DateTimeImmutable $now = null): ?array
+    {
+        if ($live === null) {
+            return null;
+        }
+
+        $now = $now instanceof DateTimeImmutable ? $now : new DateTimeImmutable('now');
+        $warningSeconds = max(5, (int) config('DEFAULT_LINK_SCAN_STALL_WARNING_SECONDS', '20'));
+        $attentionSeconds = max($warningSeconds + 1, (int) config('DEFAULT_LINK_SCAN_STALL_ATTENTION_SECONDS', '60'));
+        $heartbeatText = (string) ($live['heartbeat_at'] ?? $live['updated_at'] ?? '');
+        $staleSeconds = 0;
+
+        if ($heartbeatText !== '') {
+            try {
+                $heartbeatAt = new DateTimeImmutable($heartbeatText);
+                $staleSeconds = max(0, $now->getTimestamp() - $heartbeatAt->getTimestamp());
+            } catch (Exception $e) {
+                $staleSeconds = 0;
+            }
+        }
+
+        $isRunning = (string) ($live['status'] ?? '') === 'running';
+        if (is_array($running)) {
+            $isRunning = $isRunning && (string) ($running['status'] ?? '') === 'running';
+        }
+
+        $checked = max(0, (int) ($live['checked_urls'] ?? 0));
+        $estimate = max(0, (int) ($live['estimated_checks'] ?? ($live['total_urls'] ?? 0)));
+        $progressPercent = $estimate > 0 ? min(100, (int) round(($checked / $estimate) * 100)) : 0;
+
+        $live['stale_seconds'] = $staleSeconds;
+        $live['stalled'] = $isRunning && $staleSeconds >= $warningSeconds;
+        $live['needs_attention'] = $isRunning && $staleSeconds >= $attentionSeconds;
+        $live['stall_warning_seconds'] = $warningSeconds;
+        $live['stall_attention_seconds'] = $attentionSeconds;
+        $live['progress_percent'] = $progressPercent;
+
+        return $live;
+    }
+
+    /**
      * @return array<int, string>
      */
     public function runDueMonitors(int $batchSize = 5): array
@@ -81,8 +126,8 @@ final class LinkScanRunner
                 continue;
             }
 
-            if ($this->hasRunningJob($monitorId)) {
-                $logs[] = "[scan] monitor #{$monitorId} skipped (running job exists)";
+            if ($this->hasRunningJob()) {
+                $logs[] = "[scan] monitor #{$monitorId} skipped (another running job exists)";
                 continue;
             }
 
@@ -137,33 +182,44 @@ final class LinkScanRunner
             ];
         }
 
-        if ($this->hasRunningJob($monitorId)) {
+        $runningJob = $this->findRunningJob();
+        if (is_array($runningJob)) {
+            $runningMonitorId = (int) ($runningJob['monitor_id'] ?? 0);
             return [
                 'ok' => false,
-                'message' => 'Bu monitör için zaten çalışan bir scan job var.',
-                'job_id' => null,
-                'log_line' => "[scan] monitor #{$monitorId} skipped (running job exists)",
+                'message' => $runningMonitorId === $monitorId
+                    ? 'Bu monitör için zaten çalışan bir scan job var.'
+                    : 'Başka bir link scan job çalışıyor. Aynı anda tek job çalıştırılabilir.',
+                'job_id' => (int) ($runningJob['id'] ?? 0),
+                'log_line' => "[scan] monitor #{$monitorId} skipped (another running job exists)",
             ];
         }
 
         return $this->runMonitor($monitor, $trigger, $maxDepthOverride);
     }
 
-    private function hasRunningJob(int $monitorId): bool
+    private function hasRunningJob(): bool
+    {
+        return $this->findRunningJob() !== null;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function findRunningJob(): ?array
     {
         $this->closeStaleRunningJobs();
 
         $stmt = $this->pdo->prepare("
-            SELECT id
+            SELECT id, monitor_id
             FROM link_scan_jobs
-            WHERE monitor_id = :monitor_id
-              AND status = 'running'
+            WHERE status = 'running'
             ORDER BY id DESC
             LIMIT 1
         ");
-        $stmt->execute(['monitor_id' => $monitorId]);
+        $stmt->execute();
         $row = $stmt->fetch();
-        return is_array($row);
+        return is_array($row) ? $row : null;
     }
 
     private function closeStaleRunningJobs(): void
@@ -220,11 +276,19 @@ final class LinkScanRunner
             'trigger' => $trigger,
             'started_at' => $startedAtText,
             'updated_at' => $startedAtText,
+            'heartbeat_at' => $startedAtText,
+            'last_progress_at' => $startedAtText,
+            'phase' => 'queued',
             'checked_urls' => 0,
             'broken_urls' => 0,
             'total_urls' => 0,
             'pages_crawled' => 0,
             'estimated_checks' => 0,
+            'progress_percent' => 0,
+            'current_depth' => 0,
+            'current_batch_index' => 0,
+            'current_batch_total' => 0,
+            'pages_queued' => 0,
             'recent_limit' => self::LIVE_RECENT_LIMIT,
             'current_source_url' => '',
             'current_target_url' => '',
@@ -235,7 +299,11 @@ final class LinkScanRunner
 
         $runningUpdate = $this->pdo->prepare("
             UPDATE link_scan_jobs
-            SET checked_urls = :checked_urls, broken_urls = :broken_urls
+            SET
+                total_urls = :total_urls,
+                checked_urls = :checked_urls,
+                broken_urls = :broken_urls,
+                duration_seconds = :duration_seconds
             WHERE id = :id
         ");
 
@@ -247,7 +315,7 @@ final class LinkScanRunner
                 : (isset($monitor['link_scan_max_depth']) ? (int) $monitor['link_scan_max_depth'] : 3);
             $maxUrls = isset($monitor['link_scan_max_urls']) ? (int) $monitor['link_scan_max_urls'] : 120;
 
-            $scan = $this->scanner->scan((string) $monitor['url'], $maxDepth, $maxUrls, function ($event) use (&$liveState, &$lastRunningWriteAt, $jobId, $runningUpdate): void {
+            $scan = $this->scanner->scan((string) $monitor['url'], $maxDepth, $maxUrls, function ($event) use (&$liveState, &$lastRunningWriteAt, $jobId, $runningUpdate, $startedAt): void {
                 $this->throwIfCanceled($jobId);
 
                 if (!is_array($event)) {
@@ -255,23 +323,60 @@ final class LinkScanRunner
                 }
 
                 $type = (string) ($event['type'] ?? '');
+                $checkedCount = (int) ($event['checked_count'] ?? ($liveState['checked_urls'] ?? 0));
+                $brokenCount = (int) ($event['broken_count'] ?? ($liveState['broken_urls'] ?? 0));
+                $pageCount = (int) ($event['page_count'] ?? ($liveState['pages_crawled'] ?? 0));
+                $queueSize = (int) ($event['queue_size'] ?? ($liveState['pages_queued'] ?? 0));
+
+                $liveState['checked_urls'] = $checkedCount;
+                $liveState['broken_urls'] = $brokenCount;
+                $liveState['pages_crawled'] = max((int) ($liveState['pages_crawled'] ?? 0), $pageCount);
+                $liveState['total_urls'] = (int) ($liveState['pages_crawled'] ?? 0);
+                $liveState['current_depth'] = (int) ($event['depth'] ?? ($liveState['current_depth'] ?? 0));
+                $liveState['pages_queued'] = $queueSize;
+
                 if ($type === 'page_start') {
-                    $liveState['pages_crawled'] = (int) ($event['page_count'] ?? 0);
-                    $liveState['total_urls'] = (int) ($event['page_count'] ?? 0);
+                    $liveState['phase'] = 'page_start';
                     $liveState['current_source_url'] = (string) ($event['current_url'] ?? '');
+                    $liveState['current_target_url'] = (string) ($event['current_url'] ?? '');
+                    $liveState['current_status'] = 'starting';
+                } elseif ($type === 'page_fetch_start') {
+                    $liveState['phase'] = 'fetching_page';
+                    $liveState['current_source_url'] = (string) ($event['current_url'] ?? '');
+                    $liveState['current_target_url'] = (string) ($event['current_url'] ?? '');
+                    $liveState['current_status'] = 'fetching';
+                } elseif ($type === 'page_fetch_done') {
+                    $liveState['phase'] = ((bool) ($event['ok'] ?? false)) ? 'extracting_links' : 'page_failed';
+                    $liveState['current_source_url'] = (string) ($event['current_url'] ?? '');
+                    $liveState['current_target_url'] = (string) ($event['current_url'] ?? '');
+                    $liveState['current_status'] = ((bool) ($event['ok'] ?? false)) ? 'fetched' : 'broken';
                 } elseif ($type === 'page_resources_found') {
                     $resourceCount = (int) ($event['resource_count'] ?? 0);
-                    $checkedBeforePage = (int) ($event['checked_count'] ?? 0);
-                    $liveState['pages_crawled'] = max((int) ($liveState['pages_crawled'] ?? 0), (int) ($event['page_count'] ?? 0));
-                    $liveState['estimated_checks'] = max((int) ($liveState['estimated_checks'] ?? 0), $checkedBeforePage + $resourceCount);
+                    $liveState['phase'] = 'resources_found';
+                    $liveState['estimated_checks'] = max((int) ($liveState['estimated_checks'] ?? 0), $checkedCount + $resourceCount);
                     $liveState['current_source_url'] = (string) ($event['current_url'] ?? '');
                     $liveState['current_target_url'] = $resourceCount > 0 ? 'Kaynaklar bulundu: ' . $resourceCount : '';
                     $liveState['current_status'] = 'discovering';
+                } elseif ($type === 'resource_batch_start') {
+                    $batchIndex = (int) ($event['batch_index'] ?? 0);
+                    $batchTotal = (int) ($event['batch_total'] ?? 0);
+                    $resourceCount = (int) ($event['resource_count'] ?? 0);
+                    $liveState['phase'] = 'checking_batch';
+                    $liveState['current_batch_index'] = $batchIndex;
+                    $liveState['current_batch_total'] = $batchTotal;
+                    $liveState['estimated_checks'] = max((int) ($liveState['estimated_checks'] ?? 0), $checkedCount + $resourceCount);
+                    $liveState['current_source_url'] = (string) ($event['current_url'] ?? '');
+                    $liveState['current_target_url'] = (string) ($event['target_url'] ?? ('Batch ' . $batchIndex . '/' . $batchTotal));
+                    $liveState['current_status'] = 'checking';
+                } elseif ($type === 'resource_batch_done') {
+                    $liveState['phase'] = 'batch_done';
+                    $liveState['current_batch_index'] = (int) ($event['batch_index'] ?? ($liveState['current_batch_index'] ?? 0));
+                    $liveState['current_batch_total'] = (int) ($event['batch_total'] ?? ($liveState['current_batch_total'] ?? 0));
+                    $liveState['current_source_url'] = (string) ($event['current_url'] ?? ($liveState['current_source_url'] ?? ''));
+                    $liveState['current_status'] = 'batch_done';
                 } elseif ($type === 'resource_checked') {
-                    $liveState['checked_urls'] = (int) ($event['checked_count'] ?? 0);
-                    $liveState['broken_urls'] = (int) ($event['broken_count'] ?? 0);
-                    $liveState['pages_crawled'] = max((int) ($liveState['pages_crawled'] ?? 0), (int) ($event['page_count'] ?? 0));
-                    $liveState['estimated_checks'] = max((int) ($liveState['estimated_checks'] ?? 0), (int) ($event['checked_count'] ?? 0));
+                    $liveState['phase'] = 'checking_links';
+                    $liveState['estimated_checks'] = max((int) ($liveState['estimated_checks'] ?? 0), $checkedCount);
                     $liveState['current_source_url'] = (string) ($event['source_url'] ?? '');
                     $liveState['current_target_url'] = (string) ($event['target_url'] ?? '');
                     $liveState['current_status'] = ((bool) ($event['ok'] ?? false)) ? 'ok' : 'broken';
@@ -291,17 +396,28 @@ final class LinkScanRunner
                     $liveState['recent'] = $recent;
                 }
 
-                $liveState['updated_at'] = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
+                $estimate = max(0, (int) ($liveState['estimated_checks'] ?? 0));
+                $liveState['progress_percent'] = $estimate > 0 ? min(100, (int) round(((int) ($liveState['checked_urls'] ?? 0) / $estimate) * 100)) : 0;
+                $nowText = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
+                $liveState['updated_at'] = $nowText;
+                $liveState['heartbeat_at'] = $nowText;
+                $liveState['last_progress_at'] = $nowText;
                 $this->writeLiveState($jobId, $liveState);
                 $this->throwIfCanceled($jobId);
 
                 $now = microtime(true);
-                if (($now - $lastRunningWriteAt) >= 1.0) {
-                    $runningUpdate->execute([
-                        'checked_urls' => (int) $liveState['checked_urls'],
-                        'broken_urls' => (int) $liveState['broken_urls'],
-                        'id' => $jobId,
-                    ]);
+                if (($now - $lastRunningWriteAt) >= 5.0) {
+                    try {
+                        $runningUpdate->execute([
+                            'total_urls' => (int) ($liveState['pages_crawled'] ?? 0),
+                            'checked_urls' => (int) $liveState['checked_urls'],
+                            'broken_urls' => (int) $liveState['broken_urls'],
+                            'duration_seconds' => max(0, (new DateTimeImmutable('now'))->getTimestamp() - $startedAt->getTimestamp()),
+                            'id' => $jobId,
+                        ]);
+                    } catch (Throwable $e) {
+                        // Live JSON is the source of truth while a scan is running. Avoid blocking the scanner on a transient SQLite write lock.
+                    }
                     $lastRunningWriteAt = $now;
                 }
             });
@@ -316,7 +432,13 @@ final class LinkScanRunner
             $liveState['total_urls'] = (int) $scan['total_urls'];
             $liveState['pages_crawled'] = (int) $scan['total_urls'];
             $liveState['estimated_checks'] = (int) $scan['checked_urls'];
-            $liveState['updated_at'] = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
+            $liveState['progress_percent'] = 100;
+            $liveState['phase'] = 'completed';
+            $liveState['current_status'] = 'completed';
+            $nowText = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
+            $liveState['updated_at'] = $nowText;
+            $liveState['heartbeat_at'] = $nowText;
+            $liveState['last_progress_at'] = $nowText;
             $this->writeLiveState($jobId, $liveState);
 
             return [
@@ -339,8 +461,12 @@ final class LinkScanRunner
             ]);
 
             $liveState['status'] = 'failed';
+            $liveState['phase'] = $isCanceled ? 'canceled' : 'failed';
             $liveState['current_status'] = $isCanceled ? 'canceled' : 'failed';
-            $liveState['updated_at'] = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
+            $nowText = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
+            $liveState['updated_at'] = $nowText;
+            $liveState['heartbeat_at'] = $nowText;
+            $liveState['last_progress_at'] = $nowText;
             $recent = is_array($liveState['recent']) ? $liveState['recent'] : [];
             $recent[] = [
                 'target_url' => (string) ($liveState['current_target_url'] ?? ''),

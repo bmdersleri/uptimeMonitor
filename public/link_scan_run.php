@@ -55,9 +55,17 @@ if (function_exists('fastcgi_finish_request')) {
             echo json_encode(['ok' => false, 'message' => 'Bu monitörde link scan kapalı.', 'job_id' => null]);
             exit;
         }
-        if ($scanRepo->findRunningWithMonitor($monitorId) !== null) {
+        $runningJob = $scanRepo->findAnyRunningWithMonitor();
+        if ($runningJob !== null) {
+            $runningMonitorId = (int) ($runningJob['monitor_id'] ?? 0);
             http_response_code(409);
-            echo json_encode(['ok' => false, 'message' => 'Bu monitör için zaten çalışan bir scan job var.', 'job_id' => null]);
+            echo json_encode([
+                'ok' => false,
+                'message' => $runningMonitorId === $monitorId
+                    ? 'Bu monitör için zaten çalışan bir scan job var.'
+                    : 'Başka bir link scan job çalışıyor. Aynı anda tek job çalıştırılabilir.',
+                'job_id' => (int) ($runningJob['id'] ?? 0),
+            ]);
             exit;
         }
 

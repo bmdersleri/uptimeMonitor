@@ -104,8 +104,25 @@ assert_true_batch(count((array) $result['discovered']) === 3, 'The scanner shoul
 assert_true_batch($scanner->batchSizes === [3], 'Resources from one page should be checked as one batch');
 
 $manyScanner = new ManyLinkBatchTrackingScanner(3);
-$manyResult = $manyScanner->scan('https://example.com/index.html', 0, 20);
+$events = [];
+$manyResult = $manyScanner->scan('https://example.com/index.html', 0, 20, function ($event) use (&$events): void {
+    if (is_array($event)) {
+        $events[] = $event;
+    }
+});
 assert_true_batch(count((array) $manyResult['discovered']) === 12, 'Duplicate URLs on one page should be reported once');
-assert_true_batch($manyScanner->batchSizes === [10, 2], 'Large pages should be checked in smaller batches for live progress');
+assert_true_batch($manyScanner->batchSizes === [5, 5, 2], 'Large pages should be checked in smaller batches for live progress');
+
+$eventTypes = array_map(function (array $event): string {
+    return (string) ($event['type'] ?? '');
+}, $events);
+assert_true_batch(in_array('page_fetch_start', $eventTypes, true), 'Scanner should emit a heartbeat before fetching each page');
+assert_true_batch(in_array('page_fetch_done', $eventTypes, true), 'Scanner should emit a heartbeat after fetching each page');
+assert_true_batch(count(array_filter($eventTypes, function (string $type): bool {
+    return $type === 'resource_batch_start';
+})) === 3, 'Scanner should emit one batch-start heartbeat per resource batch');
+assert_true_batch(count(array_filter($eventTypes, function (string $type): bool {
+    return $type === 'resource_batch_done';
+})) === 3, 'Scanner should emit one batch-done heartbeat per resource batch');
 
 echo "LinkScannerBatchCheckTest OK\n";

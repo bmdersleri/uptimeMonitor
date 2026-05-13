@@ -13,6 +13,9 @@ class LinkScanner
     /** @var int */
     private $concurrency;
 
+    /** @var int */
+    private $batchSize;
+
     /** @var array<string, array<string, mixed>> */
     private $resourceCache = [];
 
@@ -21,6 +24,7 @@ class LinkScanner
         $this->timeoutSeconds = max(3, $timeoutSeconds);
         $this->requestTimeoutSeconds = max(2, (int) config('DEFAULT_LINK_SCAN_REQUEST_TIMEOUT_SECONDS', (string) $this->timeoutSeconds));
         $this->concurrency = max(1, min(10, (int) config('DEFAULT_LINK_SCAN_CONCURRENCY', '5')));
+        $this->batchSize = max(1, min(20, (int) config('LINK_SCAN_BATCH_SIZE', (string) $this->concurrency)));
     }
 
     /**
@@ -78,7 +82,33 @@ class LinkScanner
                 ]);
             }
 
+            if ($onProgress !== null) {
+                $onProgress([
+                    'type' => 'page_fetch_start',
+                    'current_url' => $currentUrl,
+                    'depth' => $depth,
+                    'page_count' => $pageCount,
+                    'checked_count' => $checkedCount,
+                    'broken_count' => $brokenCount,
+                    'queue_size' => count($queue),
+                ]);
+            }
+
             $pageFetch = $this->fetchHtml($currentUrl);
+            if ($onProgress !== null) {
+                $onProgress([
+                    'type' => 'page_fetch_done',
+                    'current_url' => $currentUrl,
+                    'depth' => $depth,
+                    'page_count' => $pageCount,
+                    'checked_count' => $checkedCount,
+                    'broken_count' => $brokenCount,
+                    'queue_size' => count($queue),
+                    'ok' => (bool) ($pageFetch['ok'] ?? false),
+                    'status_code' => (int) ($pageFetch['status_code'] ?? 0),
+                    'error_message' => (string) ($pageFetch['error_message'] ?? ''),
+                ]);
+            }
             if (!$pageFetch['ok']) {
                 $broken[] = [
                     'source_url' => $currentUrl,
@@ -146,11 +176,29 @@ class LinkScanner
                 ]);
             }
 
-            $candidateChunks = array_chunk($candidates, max(1, $this->concurrency * 2));
-            foreach ($candidateChunks as $candidateChunk) {
+            $candidateChunks = array_chunk($candidates, $this->batchSize);
+            $batchTotal = count($candidateChunks);
+            foreach ($candidateChunks as $batchIndex => $candidateChunk) {
                 $resourceUrls = [];
                 foreach ($candidateChunk as $candidate) {
                     $resourceUrls[(string) $candidate['url']] = (string) $candidate['url'];
+                }
+
+                if ($onProgress !== null) {
+                    $firstCandidate = reset($candidateChunk);
+                    $onProgress([
+                        'type' => 'resource_batch_start',
+                        'current_url' => $currentUrl,
+                        'target_url' => is_array($firstCandidate) ? (string) ($firstCandidate['url'] ?? '') : '',
+                        'depth' => $depth,
+                        'page_count' => $pageCount,
+                        'checked_count' => $checkedCount,
+                        'broken_count' => $brokenCount,
+                        'resource_count' => count($candidateChunk),
+                        'batch_index' => $batchIndex + 1,
+                        'batch_total' => $batchTotal,
+                        'queue_size' => count($queue),
+                    ]);
                 }
 
                 $checks = $this->checkResources(array_values($resourceUrls));
@@ -203,6 +251,21 @@ class LinkScanner
                             'source' => $currentUrl,
                         ];
                     }
+                }
+
+                if ($onProgress !== null) {
+                    $onProgress([
+                        'type' => 'resource_batch_done',
+                        'current_url' => $currentUrl,
+                        'depth' => $depth,
+                        'page_count' => $pageCount,
+                        'checked_count' => $checkedCount,
+                        'broken_count' => $brokenCount,
+                        'resource_count' => count($candidateChunk),
+                        'batch_index' => $batchIndex + 1,
+                        'batch_total' => $batchTotal,
+                        'queue_size' => count($queue),
+                    ]);
                 }
             }
         }

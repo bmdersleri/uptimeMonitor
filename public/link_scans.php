@@ -387,6 +387,8 @@ foreach ($monitors as $m) {
         .running { color: #1d4ed8; background: rgba(59,130,246,0.2); }
         .completed { color: #065f46; background: rgba(16,185,129,0.18); }
         .failed { color: #7f1d1d; background: rgba(239,68,68,0.2); }
+        .stalled { color: #92400e; background: rgba(245,158,11,0.2); }
+        .attention { color: #991b1b; background: rgba(239,68,68,0.2); }
         .live-grid {
             display: grid;
             grid-template-columns: 1.1fr 1fr;
@@ -404,6 +406,18 @@ foreach ($monitors as $m) {
             border-color: rgba(6, 182, 212, 0.55);
             background: rgba(6, 182, 212, 0.06);
             box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.08), 0 14px 26px rgba(2, 132, 199, 0.10);
+        }
+        .live-box.is-stalled {
+            border-style: solid;
+            border-color: rgba(245, 158, 11, 0.65);
+            background: rgba(245, 158, 11, 0.09);
+            box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.12);
+        }
+        .live-box.is-attention {
+            border-style: solid;
+            border-color: rgba(239, 68, 68, 0.65);
+            background: rgba(239, 68, 68, 0.09);
+            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
         }
         .live-target {
             margin-top: 8px;
@@ -429,6 +443,16 @@ foreach ($monitors as $m) {
             background: var(--accent2);
             box-shadow: 0 0 0 rgba(6, 182, 212, 0.55);
             animation: pulseDot 1.4s infinite;
+        }
+        .scan-dot.is-stalled {
+            background: #f59e0b;
+            box-shadow: 0 0 0 rgba(245, 158, 11, 0.55);
+            animation: pulseDotAmber 1.1s infinite;
+        }
+        .scan-dot.is-attention {
+            background: #ef4444;
+            box-shadow: 0 0 0 rgba(239, 68, 68, 0.55);
+            animation: pulseDotRed 0.9s infinite;
         }
         .current-focus {
             margin-top: 10px;
@@ -487,6 +511,33 @@ foreach ($monitors as $m) {
             color: var(--accent);
             font-size: 1rem;
         }
+        .live-meta {
+            margin-top: 6px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            font-size: 0.78rem;
+        }
+        .live-warning {
+            display: none;
+            margin-top: 8px;
+            border-radius: 10px;
+            padding: 8px 10px;
+            font-size: 0.8rem;
+            font-weight: 700;
+        }
+        .live-warning.is-stalled {
+            display: block;
+            color: #92400e;
+            border: 1px solid rgba(245, 158, 11, 0.38);
+            background: rgba(245, 158, 11, 0.14);
+        }
+        .live-warning.is-attention {
+            display: block;
+            color: #991b1b;
+            border: 1px solid rgba(239, 68, 68, 0.38);
+            background: rgba(239, 68, 68, 0.14);
+        }
         @keyframes progressMove {
             from { background-position: 0 0, 0 0; }
             to { background-position: 42px 0, 0 0; }
@@ -495,6 +546,16 @@ foreach ($monitors as $m) {
             0% { box-shadow: 0 0 0 0 rgba(6, 182, 212, 0.55); }
             70% { box-shadow: 0 0 0 9px rgba(6, 182, 212, 0); }
             100% { box-shadow: 0 0 0 0 rgba(6, 182, 212, 0); }
+        }
+        @keyframes pulseDotAmber {
+            0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.55); }
+            70% { box-shadow: 0 0 0 9px rgba(245, 158, 11, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+        }
+        @keyframes pulseDotRed {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55); }
+            70% { box-shadow: 0 0 0 9px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
         }
         .recent-list {
             margin: 0;
@@ -669,6 +730,11 @@ foreach ($monitors as $m) {
                     <div class="tiny muted" style="margin-top:6px;">
                         Checked: <span id="live-checked">0</span> • Broken: <span id="live-broken">0</span> • Taranan Sayfa: <span id="live-pages">0</span> • Hedef: <span id="live-estimated">0</span>
                     </div>
+                    <div class="live-meta muted">
+                        <span>Faz: <strong id="live-phase">-</strong></span>
+                        <span>Son güncelleme: <strong id="live-last-update">-</strong></span>
+                    </div>
+                    <div class="live-warning" id="live-warning"></div>
                 </div>
                 <div class="live-box">
                     <div class="k">Son 200 Taranan Link (Canlı)</div>
@@ -696,7 +762,7 @@ foreach ($monitors as $m) {
                         <th>Error</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="scan-jobs-body">
                     <?php foreach ($rows as $r): ?>
                         <tr data-job-row="<?= (int) $r['id']; ?>">
                             <td>#<?= (int) $r['id']; ?></td>
@@ -706,13 +772,13 @@ foreach ($monitors as $m) {
                                 </a>
                                 <div class="mono muted"><?= e((string) $r['monitor_url']); ?></div>
                             </td>
-                            <td><span class="badge <?= e((string) $r['status']); ?>"><?= e(strtoupper((string) $r['status'])); ?></span></td>
+                            <td data-job-status><span class="badge <?= e((string) $r['status']); ?>"><?= e(strtoupper((string) $r['status'])); ?></span></td>
                             <td><?= e((string) $r['started_at']); ?></td>
                             <td><?= e((string) ($r['finished_at'] ?? '-')); ?></td>
-                            <td><?= (int) $r['total_urls']; ?></td>
-                            <td><?= (int) $r['checked_urls']; ?></td>
-                            <td><?= (int) $r['broken_urls']; ?></td>
-                            <td><?= $r['duration_seconds'] !== null ? (int) $r['duration_seconds'] . 's' : '-'; ?></td>
+                            <td data-job-total><?= (int) $r['total_urls']; ?></td>
+                            <td data-job-checked><?= (int) $r['checked_urls']; ?></td>
+                            <td data-job-broken><?= (int) $r['broken_urls']; ?></td>
+                            <td data-job-duration><?= $r['duration_seconds'] !== null ? (int) $r['duration_seconds'] . 's' : '-'; ?></td>
                             <td>
                                 <a href="<?= e(url_for('/link_scans.php', ['monitor_id' => $monitorId, 'status' => $status, 'days' => $daysFilter, 'per_page' => $perPage, 'page' => $page, 'job_id' => (int) $r['id']])); ?>">Aç</a>
                             </td>
@@ -724,7 +790,7 @@ foreach ($monitors as $m) {
                                     data-job-label="#<?= (int) $r['id']; ?> <?= e((string) $r['monitor_name']); ?>"
                                 >Sil</button>
                             </td>
-                            <td class="muted tiny"><?= e((string) ($r['error_message'] ?? '-')); ?></td>
+                            <td class="muted tiny" data-job-error><?= e((string) ($r['error_message'] ?? '-')); ?></td>
                         </tr>
                     <?php endforeach; ?>
                     <?php if ($rows === []): ?>
@@ -865,18 +931,22 @@ foreach ($monitors as $m) {
             var runningJobId = 0;
             var hadRunningJob = false;
 
-            function setLiveRunning(isRunning) {
+            function setLiveRunning(isRunning, isStalled, needsAttention) {
                 var box = document.getElementById('live-main-box');
                 var progressShell = document.getElementById('live-progress-shell');
                 var dot = document.getElementById('live-dot');
                 if (box) {
                     box.classList.toggle('is-running', isRunning);
+                    box.classList.toggle('is-stalled', !!isStalled && !needsAttention);
+                    box.classList.toggle('is-attention', !!needsAttention);
                 }
                 if (progressShell) {
                     progressShell.classList.toggle('is-running', isRunning);
                 }
                 if (dot) {
                     dot.classList.toggle('is-running', isRunning);
+                    dot.classList.toggle('is-stalled', !!isStalled && !needsAttention);
+                    dot.classList.toggle('is-attention', !!needsAttention);
                 }
             }
 
@@ -900,6 +970,94 @@ foreach ($monitors as $m) {
                 return String(s).replace(/[&<>"']/g, function (m) {
                     return ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[m];
                 });
+            }
+
+            function formatSeconds(seconds) {
+                seconds = Math.max(0, parseInt(String(seconds || '0'), 10));
+                if (seconds < 60) {
+                    return seconds + 's';
+                }
+                var minutes = Math.floor(seconds / 60);
+                var rest = seconds % 60;
+                return minutes + 'm ' + rest + 's';
+            }
+
+            function phaseLabel(phase) {
+                var labels = {
+                    queued: 'Sırada',
+                    page_start: 'Sayfa başladı',
+                    fetching_page: 'Sayfa alınıyor',
+                    extracting_links: 'Linkler çıkarılıyor',
+                    page_failed: 'Sayfa hatası',
+                    resources_found: 'Kaynaklar bulundu',
+                    checking_batch: 'Batch kontrol',
+                    batch_done: 'Batch tamamlandı',
+                    checking_links: 'Link kontrol',
+                    completed: 'Tamamlandı',
+                    failed: 'Hata',
+                    canceled: 'Durduruldu'
+                };
+                return labels[String(phase || '')] || String(phase || '-');
+            }
+
+            function updateRunningTableRow(running, live) {
+                if (!running || !running.id) { return; }
+                var row = document.querySelector('[data-job-row="' + parseInt(running.id, 10) + '"]');
+                if (!row) {
+                    var tbody = document.getElementById('scan-jobs-body');
+                    if (!tbody) { return; }
+                    row = document.createElement('tr');
+                    row.setAttribute('data-job-row', String(parseInt(running.id, 10)));
+                    row.innerHTML =
+                        '<td>#' + escapeHtml(running.id) + '</td>' +
+                        '<td><a href="' + escapeHtml(<?= json_encode(url_for('/monitor_detail.php')); ?> + '?id=' + encodeURIComponent(running.monitor_id || '')) + '" style="text-decoration:none;color:inherit;font-weight:600;">' + escapeHtml(running.monitor_name || ('#' + running.monitor_id)) + '</a><div class="mono muted">' + escapeHtml(running.monitor_url || '') + '</div></td>' +
+                        '<td data-job-status><span class="badge running">RUNNING</span></td>' +
+                        '<td>' + escapeHtml(running.started_at || '-') + '</td>' +
+                        '<td>-</td>' +
+                        '<td data-job-total>0</td>' +
+                        '<td data-job-checked>0</td>' +
+                        '<td data-job-broken>0</td>' +
+                        '<td data-job-duration>-</td>' +
+                        '<td><a href="' + escapeHtml(<?= json_encode(url_for('/link_scans.php', ['monitor_id' => $monitorId, 'status' => $status, 'days' => $daysFilter, 'per_page' => $perPage, 'page' => $page])); ?> + '&job_id=' + encodeURIComponent(running.id)) + '">Aç</a></td>' +
+                        '<td><button class="btn btn-danger btn-small js-delete-job" type="button" disabled>Sil</button></td>' +
+                        '<td class="muted tiny" data-job-error>-</td>';
+                    tbody.insertBefore(row, tbody.firstChild);
+                }
+
+                var checked = live ? parseInt(live.checked_urls || 0, 10) : parseInt(running.checked_urls || 0, 10);
+                var broken = live ? parseInt(live.broken_urls || 0, 10) : parseInt(running.broken_urls || 0, 10);
+                var total = live ? parseInt(live.pages_crawled || live.total_urls || 0, 10) : parseInt(running.total_urls || 0, 10);
+                var duration = parseInt(running.duration_seconds || 0, 10);
+                var stale = live ? parseInt(live.stale_seconds || 0, 10) : 0;
+                var statusText = 'RUNNING';
+                var statusClass = 'running';
+
+                if (live && live.needs_attention) {
+                    statusText = 'ATTENTION';
+                    statusClass = 'attention';
+                } else if (live && live.stalled) {
+                    statusText = 'STALLED';
+                    statusClass = 'stalled';
+                }
+
+                if (row.querySelector('[data-job-status]')) {
+                    row.querySelector('[data-job-status]').innerHTML = '<span class="badge ' + statusClass + '">' + statusText + '</span>';
+                }
+                if (row.querySelector('[data-job-total]')) {
+                    row.querySelector('[data-job-total]').textContent = String(total);
+                }
+                if (row.querySelector('[data-job-checked]')) {
+                    row.querySelector('[data-job-checked]').textContent = String(checked);
+                }
+                if (row.querySelector('[data-job-broken]')) {
+                    row.querySelector('[data-job-broken]').textContent = String(broken);
+                }
+                if (row.querySelector('[data-job-duration]')) {
+                    row.querySelector('[data-job-duration]').textContent = duration > 0 ? formatSeconds(duration) : '-';
+                }
+                if (row.querySelector('[data-job-error]')) {
+                    row.querySelector('[data-job-error]').textContent = stale > 0 && live && live.stalled ? 'Son heartbeat: ' + formatSeconds(stale) + ' önce' : '-';
+                }
             }
 
             function postJson(urls, body) {
@@ -986,14 +1144,17 @@ foreach ($monitors as $m) {
                             document.getElementById('live-estimated').textContent = '0';
                             document.getElementById('live-progress').style.width = '0%';
                             document.getElementById('live-progress-percent').textContent = '0%';
+                            document.getElementById('live-phase').textContent = '-';
+                            document.getElementById('live-last-update').textContent = '-';
+                            document.getElementById('live-warning').className = 'live-warning';
+                            document.getElementById('live-warning').textContent = '';
                             document.getElementById('live-recent').innerHTML = '';
                             document.getElementById('live-recent-count').textContent = '0';
-                            setLiveRunning(false);
+                            setLiveRunning(false, false, false);
                             return data;
                         }
 
                         hadRunningJob = true;
-                        setLiveRunning(true);
                         var monitorName = running.monitor_name || ('#' + running.monitor_id);
                         document.getElementById('live-job').textContent = '#' + running.id + ' (' + monitorName + ')';
 
@@ -1004,6 +1165,10 @@ foreach ($monitors as $m) {
                         var source = '-';
                         var target = '-';
                         var state = running.status || 'running';
+                        var phase = '-';
+                        var staleSeconds = 0;
+                        var isStalled = false;
+                        var needsAttention = false;
                         var recent = [];
 
                         if (live) {
@@ -1014,6 +1179,10 @@ foreach ($monitors as $m) {
                             source = live.current_source_url || '-';
                             target = live.current_target_url || '-';
                             state = live.current_status || state;
+                            phase = phaseLabel(live.phase || '');
+                            staleSeconds = parseInt(live.stale_seconds || 0, 10);
+                            isStalled = !!live.stalled;
+                            needsAttention = !!live.needs_attention;
                             recent = Array.isArray(live.recent) ? live.recent : [];
                         } else {
                             checked = parseInt(running.checked_urls || 0, 10);
@@ -1022,20 +1191,41 @@ foreach ($monitors as $m) {
                             pages = parseInt(running.total_urls || 0, 10);
                         }
 
+                        setLiveRunning(true, isStalled, needsAttention);
                         document.getElementById('live-source').textContent = source;
                         document.getElementById('live-target').textContent = target;
-                        document.getElementById('live-state').textContent = String(state).toUpperCase();
+                        document.getElementById('live-state').textContent = needsAttention ? 'DİKKAT' : (isStalled ? 'BEKLİYOR' : String(state).toUpperCase());
                         document.getElementById('live-checked').textContent = String(checked);
                         document.getElementById('live-broken').textContent = String(broken);
                         document.getElementById('live-pages').textContent = String(pages);
                         document.getElementById('live-estimated').textContent = String(estimate);
+                        document.getElementById('live-phase').textContent = phase;
+                        document.getElementById('live-last-update').textContent = staleSeconds > 0 ? formatSeconds(staleSeconds) + ' önce' : 'az önce';
 
                         var pct = 0;
-                        if (estimate > 0) {
+                        if (live && live.progress_percent !== undefined) {
+                            pct = Math.max(0, Math.min(100, parseInt(live.progress_percent || 0, 10)));
+                        } else if (estimate > 0) {
                             pct = Math.min(100, Math.round((checked / estimate) * 100));
                         }
                         document.getElementById('live-progress').style.width = pct + '%';
                         document.getElementById('live-progress-percent').textContent = pct + '%';
+
+                        var warning = document.getElementById('live-warning');
+                        if (warning) {
+                            if (needsAttention) {
+                                warning.className = 'live-warning is-attention';
+                                warning.textContent = '60 saniyeden uzun süredir heartbeat yok. Tarama takılmış olabilir; Stop Scan ile manuel durdurabilirsiniz.';
+                            } else if (isStalled) {
+                                warning.className = 'live-warning is-stalled';
+                                warning.textContent = 'Canlı güncelleme gecikti. Yavaş yanıt veren bir link bekleniyor olabilir.';
+                            } else {
+                                warning.className = 'live-warning';
+                                warning.textContent = '';
+                            }
+                        }
+
+                        updateRunningTableRow(running, live);
 
                         var html = '';
                         for (var i = recent.length - 1; i >= 0; i--) {

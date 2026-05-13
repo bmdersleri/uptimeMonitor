@@ -29,6 +29,8 @@ Live site:
 - Scan quality report for each selected link-scan job
 - Dashboard link-scan job summary and stale job warning
 - Manual link scan with live progress without refreshing the page
+- Live link-scan heartbeat, stalled-scan warning, and running-row progress updates
+- Single active link-scan job policy to avoid SQLite write contention on shared hosting
 - Per-monitor link scanning can be enabled or disabled
 - Internal same-site crawling from the monitored URL
 - Configurable link scan depth from monitor settings and from the manual scan screen
@@ -46,6 +48,10 @@ Examples:
 External hosts are ignored. Non-page resources such as images, scripts, stylesheets, and iframes are checked as resources, but only same-host page links are added to the crawl queue.
 
 Resources discovered on the same page are checked in limited parallel batches. The default concurrency is `5`, and each resource check uses a shorter default timeout of `6` seconds. This speeds up broken-link detection without changing the cron interval or crawl depth.
+
+Live scans write heartbeat metadata while fetching pages and while each resource batch starts or finishes. `/link_scans.php` uses this live state to update the active job row, progress bar, current source page, current target link, phase, and last-update age without a page refresh. If no heartbeat is received for `20` seconds, the scan is shown as possibly stalled; after `60` seconds it is shown as needing attention. The job is not auto-failed by these warnings, so the user can decide whether to wait, stop the scan, or start a new scan after stopping it.
+
+Only one link-scan job is allowed to run at a time. This is intentional for the current SQLite/shared-hosting deployment: concurrent scans can lock the database and make otherwise healthy scans appear stuck. Status polling also throttles stale-job cleanup writes so the live progress endpoint does not compete with the scanner.
 
 Broken-link ignore rules can be managed from `/broken_links.php`. Rules can match the target URL, the source page URL, or either side. Supported match types are `contains`, `exact`, and `regex`. Ignored links are removed from the active broken-link list and skipped during future scan persistence.
 
@@ -101,6 +107,9 @@ DEFAULT_LINK_SCAN_MAX_DEPTH=3
 DEFAULT_LINK_SCAN_CONCURRENCY=5
 DEFAULT_LINK_SCAN_REQUEST_TIMEOUT_SECONDS=6
 DEFAULT_LINK_SCAN_STALE_AFTER_MINUTES=60
+DEFAULT_LINK_SCAN_STALL_WARNING_SECONDS=20
+DEFAULT_LINK_SCAN_STALL_ATTENTION_SECONDS=60
+LINK_SCAN_BATCH_SIZE=5
 ```
 
 Notes:
@@ -199,6 +208,8 @@ DEFAULT_LINK_SCAN_MAX_URLS=120
 DEFAULT_LINK_SCAN_CONCURRENCY=5
 DEFAULT_LINK_SCAN_REQUEST_TIMEOUT_SECONDS=6
 DEFAULT_LINK_SCAN_STALE_AFTER_MINUTES=60
+DEFAULT_LINK_SCAN_STALL_WARNING_SECONDS=20
+DEFAULT_LINK_SCAN_STALL_ATTENTION_SECONDS=60
 LINK_SCAN_BATCH_SIZE=5
 ```
 

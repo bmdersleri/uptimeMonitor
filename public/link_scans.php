@@ -69,6 +69,11 @@ function link_scans_bind_params(PDOStatement $stmt, array $params): void
     }
 }
 
+function link_scans_is_http_url(string $url): bool
+{
+    return preg_match('#^https?://#i', $url) === 1;
+}
+
 /**
  * @param array<string, mixed> $filters
  */
@@ -301,6 +306,22 @@ foreach ($monitors as $m) {
             border-radius: 8px;
             font-size: 0.78rem;
         }
+        .btn-open {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 44px;
+            color: var(--accent);
+            background: rgba(2, 132, 199, 0.1);
+            border-color: rgba(2, 132, 199, 0.35);
+        }
+        .btn-open:hover,
+        .btn-open:focus {
+            color: #fff;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            border-color: transparent;
+            outline: none;
+        }
         .btn[disabled] { opacity: 0.5; cursor: not-allowed; }
         .grid {
             margin-top: 12px;
@@ -377,6 +398,34 @@ foreach ($monitors as $m) {
             background: rgba(148, 163, 184, 0.08);
         }
         .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; word-break: break-all; }
+        .url-link {
+            display: block;
+            color: var(--text);
+            text-decoration: none;
+            line-height: 1.35;
+        }
+        .url-link:hover,
+        .url-link:focus {
+            color: var(--accent);
+            text-decoration: underline;
+            outline: none;
+        }
+        .url-card {
+            display: grid;
+            gap: 5px;
+            min-width: 0;
+            padding: 8px 10px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: rgba(148, 163, 184, 0.08);
+        }
+        .url-label {
+            color: var(--muted);
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
         .muted { color: var(--muted); }
         .badge {
             padding: 4px 8px;
@@ -559,18 +608,59 @@ foreach ($monitors as $m) {
         }
         .recent-list {
             margin: 0;
-            padding-left: 18px;
+            padding: 0;
             max-height: 220px;
             overflow: auto;
             font-size: 0.82rem;
+            list-style: none;
+            display: grid;
+            gap: 7px;
         }
-        .recent-list li { margin-bottom: 6px; }
+        .recent-list li {
+            display: grid;
+            gap: 4px;
+            padding: 8px 10px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: rgba(148, 163, 184, 0.08);
+        }
+        .recent-status {
+            width: max-content;
+            padding: 2px 7px;
+            border-radius: 999px;
+            font-size: 0.68rem;
+            font-weight: 800;
+        }
+        .recent-status.ok { color: #065f46; background: rgba(16,185,129,0.18); }
+        .recent-status.broken { color: #7f1d1d; background: rgba(239,68,68,0.2); }
+        .recent-url { color: var(--text); line-height: 1.35; }
         .quality-grid { display:grid; grid-template-columns:1fr 1fr 0.7fr; gap:10px; margin:12px 0; }
         .quality-box { border:1px solid var(--line); border-radius:12px; padding:10px; min-width:0; }
         .quality-box h3 { margin:0 0 8px; font-size:0.9rem; }
         .quality-list { margin:0; padding:0; list-style:none; display:grid; gap:7px; }
-        .quality-list li { display:flex; justify-content:space-between; gap:10px; border-bottom:1px solid var(--line); padding-bottom:7px; }
-        .quality-list li:last-child { border-bottom:0; padding-bottom:0; }
+        .quality-list li {
+            display:grid;
+            grid-template-columns:minmax(0, 1fr) auto;
+            align-items:start;
+            gap:10px;
+            border:1px solid var(--line);
+            border-radius:8px;
+            padding:8px 9px;
+            background:rgba(148, 163, 184, 0.08);
+        }
+        .count-pill {
+            min-width: 32px;
+            text-align: center;
+            padding: 3px 8px;
+            border-radius: 999px;
+            color: var(--accent);
+            background: rgba(2, 132, 199, 0.1);
+            border: 1px solid rgba(2, 132, 199, 0.25);
+            font-size: 0.76rem;
+        }
+        .broken-detail-table { table-layout: fixed; }
+        .broken-detail-table th:nth-child(1),
+        .broken-detail-table th:nth-child(2) { width: 30%; }
         .tiny { font-size: 0.78rem; }
         .notice {
             margin-top: 8px;
@@ -781,7 +871,7 @@ foreach ($monitors as $m) {
                             <td data-job-broken><?= (int) $r['broken_urls']; ?></td>
                             <td data-job-duration><?= $r['duration_seconds'] !== null ? (int) $r['duration_seconds'] . 's' : '-'; ?></td>
                             <td>
-                                <a href="<?= e(url_for('/link_scans.php', ['monitor_id' => $monitorId, 'status' => $status, 'days' => $daysFilter, 'per_page' => $perPage, 'page' => $page, 'job_id' => (int) $r['id']])); ?>">Aç</a>
+                                <a class="btn btn-small btn-open" href="<?= e(url_for('/link_scans.php', ['monitor_id' => $monitorId, 'status' => $status, 'days' => $daysFilter, 'per_page' => $perPage, 'page' => $page, 'job_id' => (int) $r['id']])); ?>">Aç</a>
                             </td>
                             <td>
                                 <button
@@ -832,10 +922,18 @@ foreach ($monitors as $m) {
                         <h3>Top Broken Targets</h3>
                         <ul class="quality-list">
                             <?php foreach ((array) ($selectedQuality['top_targets'] ?? []) as $item): ?>
-                                <li><span class="mono"><?= e((string) ($item['target_url'] ?? '-')); ?></span><strong><?= (int) ($item['hit_count'] ?? 0); ?></strong></li>
+                                <?php $targetUrl = (string) ($item['target_url'] ?? '-'); ?>
+                                <li>
+                                    <?php if (link_scans_is_http_url($targetUrl)): ?>
+                                        <a class="url-link mono" href="<?= e($targetUrl); ?>" target="_blank" rel="noopener noreferrer"><?= e($targetUrl); ?></a>
+                                    <?php else: ?>
+                                        <span class="mono"><?= e($targetUrl); ?></span>
+                                    <?php endif; ?>
+                                    <strong class="count-pill"><?= (int) ($item['hit_count'] ?? 0); ?></strong>
+                                </li>
                             <?php endforeach; ?>
                             <?php if ((array) ($selectedQuality['top_targets'] ?? []) === []): ?>
-                                <li><span class="muted">Kayıt yok</span><strong>0</strong></li>
+                                <li><span class="muted">Kayıt yok</span><strong class="count-pill">0</strong></li>
                             <?php endif; ?>
                         </ul>
                     </div>
@@ -843,10 +941,18 @@ foreach ($monitors as $m) {
                         <h3>Problemli Kaynak Sayfalar</h3>
                         <ul class="quality-list">
                             <?php foreach ((array) ($selectedQuality['top_sources'] ?? []) as $item): ?>
-                                <li><span class="mono"><?= e((string) ($item['source_url'] ?? '-')); ?></span><strong><?= (int) ($item['hit_count'] ?? 0); ?></strong></li>
+                                <?php $sourceUrl = (string) ($item['source_url'] ?? '-'); ?>
+                                <li>
+                                    <?php if (link_scans_is_http_url($sourceUrl)): ?>
+                                        <a class="url-link mono" href="<?= e($sourceUrl); ?>" target="_blank" rel="noopener noreferrer"><?= e($sourceUrl); ?></a>
+                                    <?php else: ?>
+                                        <span class="mono"><?= e($sourceUrl); ?></span>
+                                    <?php endif; ?>
+                                    <strong class="count-pill"><?= (int) ($item['hit_count'] ?? 0); ?></strong>
+                                </li>
                             <?php endforeach; ?>
                             <?php if ((array) ($selectedQuality['top_sources'] ?? []) === []): ?>
-                                <li><span class="muted">Kayıt yok</span><strong>0</strong></li>
+                                <li><span class="muted">Kayıt yok</span><strong class="count-pill">0</strong></li>
                             <?php endif; ?>
                         </ul>
                     </div>
@@ -854,15 +960,15 @@ foreach ($monitors as $m) {
                         <h3>Status Codes</h3>
                         <ul class="quality-list">
                             <?php foreach ((array) ($selectedQuality['status_codes'] ?? []) as $item): ?>
-                                <li><span><?= (int) ($item['status_code'] ?? 0) ?: 'No code'; ?></span><strong><?= (int) ($item['hit_count'] ?? 0); ?></strong></li>
+                                <li><span><?= (int) ($item['status_code'] ?? 0) ?: 'No code'; ?></span><strong class="count-pill"><?= (int) ($item['hit_count'] ?? 0); ?></strong></li>
                             <?php endforeach; ?>
                             <?php if ((array) ($selectedQuality['status_codes'] ?? []) === []): ?>
-                                <li><span class="muted">Kayıt yok</span><strong>0</strong></li>
+                                <li><span class="muted">Kayıt yok</span><strong class="count-pill">0</strong></li>
                             <?php endif; ?>
                         </ul>
                     </div>
                 </div>
-                <table>
+                <table class="broken-detail-table">
                     <thead>
                         <tr>
                             <th>Target URL</th>
@@ -876,10 +982,32 @@ foreach ($monitors as $m) {
                     </thead>
                     <tbody>
                         <?php foreach ($selectedBrokenTargets as $b): ?>
-                            <?php $isResolved = ($b['resolved_at'] ?? null) !== null; ?>
+                            <?php
+                            $isResolved = ($b['resolved_at'] ?? null) !== null;
+                            $targetUrl = (string) ($b['target_url'] ?? '-');
+                            $sourceUrl = (string) ($b['source_url'] ?? '-');
+                            ?>
                             <tr>
-                                <td class="mono"><?= e((string) $b['target_url']); ?></td>
-                                <td class="mono"><?= e((string) $b['source_url']); ?></td>
+                                <td>
+                                    <div class="url-card">
+                                        <span class="url-label">Target</span>
+                                        <?php if (link_scans_is_http_url($targetUrl)): ?>
+                                            <a class="url-link mono" href="<?= e($targetUrl); ?>" target="_blank" rel="noopener noreferrer"><?= e($targetUrl); ?></a>
+                                        <?php else: ?>
+                                            <span class="mono"><?= e($targetUrl); ?></span>
+                                        <?php endif; ?>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="url-card">
+                                        <span class="url-label">Source</span>
+                                        <?php if (link_scans_is_http_url($sourceUrl)): ?>
+                                            <a class="url-link mono" href="<?= e($sourceUrl); ?>" target="_blank" rel="noopener noreferrer"><?= e($sourceUrl); ?></a>
+                                        <?php else: ?>
+                                            <span class="mono"><?= e($sourceUrl); ?></span>
+                                        <?php endif; ?>
+                                    </div>
+                                </td>
                                 <td><?= $b['status_code'] !== null ? (int) $b['status_code'] : '-'; ?></td>
                                 <td><?= (int) $b['occurrence_count']; ?></td>
                                 <td><?= e((string) $b['last_detected_at']); ?></td>
@@ -1022,7 +1150,7 @@ foreach ($monitors as $m) {
                         '<td data-job-checked>0</td>' +
                         '<td data-job-broken>0</td>' +
                         '<td data-job-duration>-</td>' +
-                        '<td><a href="' + escapeHtml(<?= json_encode(url_for('/link_scans.php', ['monitor_id' => $monitorId, 'status' => $status, 'days' => $daysFilter, 'per_page' => $perPage, 'page' => $page])); ?> + '&job_id=' + encodeURIComponent(running.id)) + '">Aç</a></td>' +
+                        '<td><a class="btn btn-small btn-open" href="' + escapeHtml(<?= json_encode(url_for('/link_scans.php', ['monitor_id' => $monitorId, 'status' => $status, 'days' => $daysFilter, 'per_page' => $perPage, 'page' => $page])); ?> + '&job_id=' + encodeURIComponent(running.id)) + '">Aç</a></td>' +
                         '<td><button class="btn btn-danger btn-small js-delete-job" type="button" disabled>Sil</button></td>' +
                         '<td class="muted tiny" data-job-error>-</td>';
                     tbody.insertBefore(row, tbody.firstChild);
@@ -1235,7 +1363,8 @@ foreach ($monitors as $m) {
                         for (var i = recent.length - 1; i >= 0; i--) {
                             var r = recent[i] || {};
                             var st = r.status === 'broken' ? 'BROKEN' : 'OK';
-                            html += '<li><strong>' + st + '</strong> • ' + escapeHtml(r.target_url || '-') + '</li>';
+                            var statusClass = r.status === 'broken' ? 'broken' : 'ok';
+                            html += '<li><span class="recent-status ' + statusClass + '">' + st + '</span><span class="recent-url mono">' + escapeHtml(r.target_url || '-') + '</span></li>';
                         }
                         document.getElementById('live-recent').innerHTML = html;
                         document.getElementById('live-recent-count').textContent = String(recent.length);

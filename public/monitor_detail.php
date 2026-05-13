@@ -222,6 +222,7 @@ if ($avgResponse24 !== null && $avgResponse7 !== null) {
             <a href="<?= e(url_for('/monitor_edit.php', ['id' => $monitorId])); ?>">Düzenle</a>
             <a href="<?= e(url_for('/broken_links.php', ['monitor_id' => $monitorId])); ?>">Broken Links</a>
             <a href="<?= e(url_for('/link_scans.php', ['monitor_id' => $monitorId])); ?>">Link Scans</a>
+            <a href="<?= e(url_for('/reports.php')); ?>">Reports</a>
             <a href="<?= e(url_for('/notifications.php')); ?>">Notifications</a>
             <a href="<?= e(url_for('/health.php')); ?>">Health</a>
             <a href="<?= e(url_for('/logout.php')); ?>">Çıkış</a>

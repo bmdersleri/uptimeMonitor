@@ -96,6 +96,22 @@ CREATE TABLE IF NOT EXISTS notification_retry_queue (
 );
 CREATE INDEX IF NOT EXISTS idx_notification_retry_queue_status_time ON notification_retry_queue (status, next_attempt_at);
 
+CREATE TABLE IF NOT EXISTS report_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    report_type TEXT NOT NULL CHECK (report_type IN ('daily','weekly')),
+    period_start TEXT NOT NULL,
+    period_end TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    body TEXT NOT NULL,
+    email_status TEXT NOT NULL DEFAULT 'skipped',
+    telegram_status TEXT NOT NULL DEFAULT 'skipped',
+    email_error TEXT NULL,
+    telegram_error TEXT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    sent_at TEXT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_report_runs_type_time ON report_runs (report_type, created_at);
+
 CREATE TABLE IF NOT EXISTS link_scan_jobs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     monitor_id INTEGER NOT NULL,

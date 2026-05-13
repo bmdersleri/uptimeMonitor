@@ -534,6 +534,7 @@ $avgResponse = $summary['avg_response_24h_ms'];
                 <a class="btn btn-ghost" href="<?= e(url_for('/broken_links.php')); ?>">Broken Links</a>
                 <a class="btn btn-ghost" href="<?= e(url_for('/link_scans.php')); ?>">Link Scans</a>
                 <a class="btn btn-ghost" href="<?= e(url_for('/retry_queue.php')); ?>">Retry Queue</a>
+                <a class="btn btn-ghost" href="<?= e(url_for('/reports.php')); ?>">Reports</a>
                 <a class="btn btn-ghost" href="<?= e(url_for('/notifications.php')); ?>">Notifications</a>
                 <a class="btn btn-ghost" href="<?= e(url_for('/health.php')); ?>">Health</a>
                 <a class="btn btn-ghost" href="<?= e(url_for('/index.php')); ?>">Yenile</a>

@@ -62,4 +62,22 @@ foreach ($brokenLinkColumns as $col => $sql) {
     }
 }
 
+$pdo->exec("
+    CREATE TABLE IF NOT EXISTS report_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        report_type TEXT NOT NULL CHECK (report_type IN ('daily','weekly')),
+        period_start TEXT NOT NULL,
+        period_end TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        body TEXT NOT NULL,
+        email_status TEXT NOT NULL DEFAULT 'skipped',
+        telegram_status TEXT NOT NULL DEFAULT 'skipped',
+        email_error TEXT NULL,
+        telegram_error TEXT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        sent_at TEXT NULL
+    )
+");
+$pdo->exec("CREATE INDEX IF NOT EXISTS idx_report_runs_type_time ON report_runs (report_type, created_at)");
+
 echo "[migrate] SQLite migration tamam.\n";

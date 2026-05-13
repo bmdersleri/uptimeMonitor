@@ -15,6 +15,8 @@ Live site:
 - Email and Telegram notification infrastructure
 - Notification settings and test-send screen at `/notifications.php`
 - Notification retry queue and retry worker
+- Daily and weekly operational reports with email/Telegram delivery
+- Report history and resend screen at `/reports.php`
 - System health screen at `/health.php`
 - Monitor detail page with recent checks, incidents, uptime trends, and link-scan summary
 - Broken links screen at `/broken_links.php`
@@ -168,6 +170,18 @@ Notification retry worker:
 php cron/retry_notifications.php
 ```
 
+Daily report worker:
+
+```bash
+php cron/daily_report.php
+```
+
+Weekly report worker:
+
+```bash
+php cron/weekly_report.php
+```
+
 ## Main Routes
 
 - Dashboard: `/index.php`
@@ -186,6 +200,7 @@ php cron/retry_notifications.php
 - Link scan bulk cleanup endpoint: `/link_scan_bulk_delete.php` (POST)
 - Link scan full reset endpoint: `/link_scan_reset.php` (POST)
 - Retry queue: `/retry_queue.php`
+- Reports: `/reports.php`
 - Notifications: `/notifications.php`
 - System health: `/health.php`
 - Logout: `/logout.php`
@@ -208,6 +223,18 @@ Run notification retries every 5 minutes:
 
 ```cron
 */5 * * * * /usr/bin/php /home2/cylcoinc/kirbas.com/uptime/cron/retry_notifications.php >> /home2/cylcoinc/kirbas.com/uptime/storage/logs/retry_notifications.log 2>&1
+```
+
+Send the daily report every morning:
+
+```cron
+0 9 * * * /usr/bin/php /home2/cylcoinc/kirbas.com/uptime/cron/daily_report.php >> /home2/cylcoinc/kirbas.com/uptime/storage/logs/daily_report.log 2>&1
+```
+
+Send the weekly report every Monday morning:
+
+```cron
+0 9 * * 1 /usr/bin/php /home2/cylcoinc/kirbas.com/uptime/cron/weekly_report.php >> /home2/cylcoinc/kirbas.com/uptime/storage/logs/weekly_report.log 2>&1
 ```
 
 ## Configuration

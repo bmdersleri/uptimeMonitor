@@ -131,6 +131,7 @@ $logs = recent_notification_logs($pdo);
             <a class="btn" href="<?= e(url_for('/index.php')); ?>">Dashboard</a>
             <a class="btn" href="<?= e(url_for('/broken_links.php')); ?>">Broken Links</a>
             <a class="btn" href="<?= e(url_for('/link_scans.php')); ?>">Link Scans</a>
+            <a class="btn" href="<?= e(url_for('/reports.php')); ?>">Reports</a>
             <a class="btn" href="<?= e(url_for('/health.php')); ?>">Health</a>
             <button class="btn" id="theme-toggle" type="button">Tema</button>
             <a class="btn" href="<?= e(url_for('/logout.php')); ?>">Çıkış</a>

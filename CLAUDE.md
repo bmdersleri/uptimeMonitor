@@ -22,6 +22,8 @@ php cron/check_uptime.php        # uptime checks
 php cron/scan_links.php          # link scanning
 php cron/run_manual_link_scan.php {monitor_id} {max_depth} # detached manual link scan worker
 php cron/retry_notifications.php # notification retries
+php cron/daily_report.php        # send daily report
+php cron/weekly_report.php       # send weekly report
 
 # Run a single test
 php tests/LinkScannerDepthTest.php
@@ -78,6 +80,7 @@ Some repositories include inline `ensure*Column()` methods for lightweight schem
 - `LinkScanProcessLauncher` — starts manual link scans as detached workers and logs launch failures to `storage/logs/manual_link_scan_launch.log`
 - `LinkScanResetter` — clears link scan jobs, discovered links, broken links, and live state files while preserving users, monitors, uptime data, notification data, and ignore rules
 - `Notifier` — sends email (PHP `mail()`) and Telegram (bot API) notifications for incidents and broken-link summaries
+- `ReportService` — builds daily/weekly operational summaries, sends them through configured email/Telegram channels, and stores delivery status in `report_runs`
 
 ### URL generation
 
@@ -93,6 +96,7 @@ Three CLI scripts meant to be invoked by system cron:
 - `check_uptime.php` — queries monitors due for check, runs `UptimeChecker`, handles incident lifecycle
 - `scan_links.php` — queries monitors due for link scan, runs `LinkScanRunner`
 - `retry_notifications.php` — processes pending items in the notification retry queue
+- `daily_report.php` and `weekly_report.php` — generate and send report summaries, then store rows in `report_runs`
 
 Manual scans are started by `public/link_scan_run.php`. When shell execution is available, it delegates to `LinkScanProcessLauncher`, which starts `cron/run_manual_link_scan.php` outside the HTTP request. Shared hosting may execute `/usr/bin/php` as CGI/FastCGI instead of CLI; the manual worker therefore rejects direct browser execution but can accept shell-provided `$argv` or `UPTIME_MONITOR_ID` / `UPTIME_MAX_DEPTH` environment values.
 

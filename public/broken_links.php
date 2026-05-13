@@ -380,6 +380,7 @@ $monitors = $monitorRepo->all();
                 <span class="btn"><?= e((string) ($user['email'] ?? '-')); ?></span>
                 <a class="btn" href="<?= e(url_for('/index.php')); ?>">Dashboard</a>
                 <a class="btn" href="<?= e(url_for('/link_scans.php')); ?>">Link Scans</a>
+                <a class="btn" href="<?= e(url_for('/reports.php')); ?>">Reports</a>
                 <a class="btn" href="<?= e(url_for('/notifications.php')); ?>">Notifications</a>
                 <a class="btn" href="<?= e(url_for('/health.php')); ?>">Health</a>
                 <button class="btn" id="theme-toggle" type="button">Tema</button>

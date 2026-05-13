@@ -17,6 +17,7 @@ require_once __DIR__ . '/app/Services/LinkScanProcessLauncher.php';
 require_once __DIR__ . '/app/Services/LinkScanRunner.php';
 require_once __DIR__ . '/app/Services/LinkScanResetter.php';
 require_once __DIR__ . '/app/Services/Notifier.php';
+require_once __DIR__ . '/app/Services/ReportService.php';
 require_once __DIR__ . '/app/Services/UptimeChecker.php';
 
 date_default_timezone_set((string) config('APP_TIMEZONE', 'UTC'));

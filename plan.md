@@ -1883,3 +1883,10 @@ The next major implementation phase should focus on report generation and delive
 - Telegram delivery using the existing Telegram notifier path.
 - Report history screen with resend/download actions.
 - Cron workers for scheduled report generation.
+
+Initial reporting implementation is now in place:
+
+- `ReportService` generates daily and weekly plain-text operational summaries.
+- `/reports.php` provides preview, manual send, report history, and resend actions.
+- `report_runs` stores each generated report and email/Telegram delivery status.
+- `cron/daily_report.php` and `cron/weekly_report.php` can be scheduled from hosting cron.

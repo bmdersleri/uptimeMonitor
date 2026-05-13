@@ -73,6 +73,8 @@ $logs = [
     'cron.log' => log_age($root . '/storage/logs/cron.log'),
     'link_scan.log' => log_age($root . '/storage/logs/link_scan.log'),
     'retry_notifications.log' => log_age($root . '/storage/logs/retry_notifications.log'),
+    'daily_report.log' => log_age($root . '/storage/logs/daily_report.log'),
+    'weekly_report.log' => log_age($root . '/storage/logs/weekly_report.log'),
 ];
 ?>
 <!doctype html>
@@ -94,6 +96,7 @@ $logs = [
             <a class="btn" href="<?= e(url_for('/index.php')); ?>">Dashboard</a>
             <a class="btn" href="<?= e(url_for('/broken_links.php')); ?>">Broken Links</a>
             <a class="btn" href="<?= e(url_for('/link_scans.php')); ?>">Link Scans</a>
+            <a class="btn" href="<?= e(url_for('/reports.php')); ?>">Reports</a>
             <a class="btn" href="<?= e(url_for('/notifications.php')); ?>">Notifications</a>
             <button class="btn" id="theme-toggle" type="button">Tema</button>
             <a class="btn" href="<?= e(url_for('/logout.php')); ?>">Çıkış</a>

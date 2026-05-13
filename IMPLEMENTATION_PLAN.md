@@ -18,6 +18,8 @@ Completed:
 - Email and Telegram notification infrastructure
 - Notification logs and retry queue
 - Notification settings and test-send screen
+- Daily and weekly email/Telegram report delivery
+- Report history page with resend action
 - System health screen for runtime, cron, queue, and storage checks
 - Modern dashboard with status KPIs
 - Monitor create/edit/detail flows
@@ -176,6 +178,16 @@ Completed:
 - Monitor detail quality summary for the latest link scan
 - Link scan results readability pass for job details and live recent links
 
+### Sprint 7: Email and Telegram Reporting
+
+Completed:
+- `ReportService` for daily and weekly operational summaries
+- `report_runs` table for generated report history and channel delivery status
+- `/reports.php` page for preview, manual send, history, and resend
+- `cron/daily_report.php` and `cron/weekly_report.php`
+- Report navigation links from the main operational screens
+- Health-screen log freshness entries for report cron logs
+
 ## 5. MVP Completion Criteria
 
 The MVP is considered complete when:
@@ -233,9 +245,9 @@ php database/migrate_sqlite.php
 ## 7. Next Improvements
 
 Recommended future work:
-- Build daily and weekly reporting that can be delivered through email and Telegram.
-- Add a reports page with generated report history and resend actions.
-- Add report cron scripts and a notification template for operational summaries.
+- Add CSV export for report rows and report detail data.
+- Add HTML email templates if plain-text summaries are not enough.
+- Add report retention cleanup after a configurable number of days.
 - Add CSRF tokens to monitor action forms.
 - Store scan depth on each `link_scan_jobs` row for historical audit.
 - Add richer trend charts for scan quality over time.

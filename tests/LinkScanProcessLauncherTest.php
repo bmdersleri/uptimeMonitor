@@ -33,6 +33,9 @@ $linuxLauncher = new LinkScanProcessLauncher(
 
 assert_true_process_launcher($linuxLauncher->launchManualScan(6, 2) === true, 'Linux detached launch should report success');
 assert_true_process_launcher(strpos($linuxCommand, 'nohup ') === 0, 'Linux command should use nohup');
+assert_true_process_launcher(strpos($linuxCommand, 'UPTIME_MANUAL_SCAN=1') !== false, 'Linux command should include worker guard env');
+assert_true_process_launcher(strpos($linuxCommand, 'UPTIME_MONITOR_ID=') !== false, 'Linux command should include monitor env');
+assert_true_process_launcher(strpos($linuxCommand, 'UPTIME_MAX_DEPTH=') !== false, 'Linux command should include depth env');
 assert_true_process_launcher(strpos($linuxCommand, '/usr/bin/php') !== false, 'Linux command should include PHP binary');
 assert_true_process_launcher(strpos($linuxCommand, 'run_manual_link_scan.php') !== false, 'Linux command should include worker script');
 assert_true_process_launcher(strpos($linuxCommand, '"6"') !== false, 'Linux command should include monitor id');
@@ -51,6 +54,8 @@ $windowsLauncher = new LinkScanProcessLauncher(
 
 assert_true_process_launcher($windowsLauncher->launchManualScan(9, null) === true, 'Windows detached launch should report success');
 assert_true_process_launcher(strpos($windowsCommand, 'cmd /c start /B "" ') === 0, 'Windows command should use start /B');
+assert_true_process_launcher(strpos($windowsCommand, 'UPTIME_MANUAL_SCAN=1') !== false, 'Windows command should include worker guard env');
+assert_true_process_launcher(strpos($windowsCommand, 'UPTIME_MONITOR_ID=9') !== false, 'Windows command should include monitor env');
 assert_true_process_launcher(strpos($windowsCommand, 'php.exe') !== false, 'Windows command should include PHP binary');
 assert_true_process_launcher(strpos($windowsCommand, '"9"') !== false || strpos($windowsCommand, "'9'") !== false, 'Windows command should include monitor id');
 

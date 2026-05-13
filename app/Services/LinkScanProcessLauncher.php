@@ -51,9 +51,20 @@ final class LinkScanProcessLauncher
         $baseCommand = implode(' ', $parts);
         $logFile = escapeshellarg($this->launchLogPath);
         if (strcasecmp($this->osFamily, 'Windows') === 0) {
-            $command = 'cmd /c start /B "" ' . $baseCommand . ' >> ' . $logFile . ' 2>&1';
+            $envCommand = 'set "UPTIME_MANUAL_SCAN=1" && set "UPTIME_MONITOR_ID=' . $monitorId . '"';
+            if ($maxDepth !== null && $maxDepth > 0) {
+                $envCommand .= ' && set "UPTIME_MAX_DEPTH=' . $maxDepth . '"';
+            }
+            $command = 'cmd /c start /B "" ' . $envCommand . ' && ' . $baseCommand . ' >> ' . $logFile . ' 2>&1';
         } else {
-            $command = 'nohup ' . $baseCommand . ' >> ' . $logFile . ' 2>&1 &';
+            $envParts = [
+                'UPTIME_MANUAL_SCAN=1',
+                'UPTIME_MONITOR_ID=' . escapeshellarg((string) $monitorId),
+            ];
+            if ($maxDepth !== null && $maxDepth > 0) {
+                $envParts[] = 'UPTIME_MAX_DEPTH=' . escapeshellarg((string) $maxDepth);
+            }
+            $command = 'nohup env ' . implode(' ', $envParts) . ' ' . $baseCommand . ' >> ' . $logFile . ' 2>&1 &';
         }
 
         return $this->runCommand($command);

@@ -9,8 +9,11 @@ if (isset($_SERVER['REQUEST_METHOD'])) {
     exit(1);
 }
 
-$monitorId = isset($argv[1]) ? (int) $argv[1] : 0;
-$maxDepth = isset($argv[2]) ? max(1, (int) $argv[2]) : null;
+$monitorId = isset($argv[1]) ? (int) $argv[1] : (int) getenv('UPTIME_MONITOR_ID');
+$envDepth = getenv('UPTIME_MAX_DEPTH');
+$maxDepth = isset($argv[2])
+    ? max(1, (int) $argv[2])
+    : ($envDepth !== false && $envDepth !== '' ? max(1, (int) $envDepth) : null);
 
 if ($monitorId < 1) {
     manual_link_scan_stderr('Missing or invalid monitor id.');

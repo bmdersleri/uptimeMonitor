@@ -98,7 +98,7 @@ Three CLI scripts meant to be invoked by system cron:
 - `retry_notifications.php` — processes pending items in the notification retry queue
 - `daily_report.php` and `weekly_report.php` — generate and send report summaries, then store rows in `report_runs`
 
-`ReportService` now stores both plain-text and HTML bodies in `report_runs`. Email sends should remain multipart/plain-text + HTML, while Telegram continues to use the plain-text body. The reports screen also exposes CSV export through `/reports_export.php`.
+`ReportService` now stores both plain-text and HTML bodies in `report_runs`. Email sends should remain multipart/plain-text + HTML, while Telegram continues to use the plain-text body. The reports screen also exposes type/date filters and CSV export through `/reports_export.php`, and the export should honor the same filters as the table view.
 
 Manual scans are started by `public/link_scan_run.php`. When shell execution is available, it delegates to `LinkScanProcessLauncher`, which starts `cron/run_manual_link_scan.php` outside the HTTP request. Shared hosting may execute `/usr/bin/php` as CGI/FastCGI instead of CLI; the manual worker therefore rejects direct browser execution but can accept shell-provided `$argv` or `UPTIME_MONITOR_ID` / `UPTIME_MAX_DEPTH` environment values.
 

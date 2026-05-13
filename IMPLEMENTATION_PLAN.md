@@ -20,7 +20,7 @@ Completed:
 - Notification settings and test-send screen
 - Daily and weekly email/Telegram report delivery
 - Report history page with resend action
-- Report CSV export endpoint and download buttons
+- Report CSV export endpoint and download buttons, with history filters shared between the table view and export
 - System health screen for runtime, cron, queue, and storage checks
 - Modern dashboard with status KPIs
 - Monitor create/edit/detail flows

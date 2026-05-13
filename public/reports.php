@@ -16,11 +16,45 @@ function report_status_class(string $status): string
     return 'skipped';
 }
 
+function reports_normalize_date_filter(string $value): ?string
+{
+    $value = trim($value);
+    if ($value === '') {
+        return null;
+    }
+
+    $dt = DateTimeImmutable::createFromFormat('Y-m-d', $value);
+    $errors = DateTimeImmutable::getLastErrors();
+    if (!$dt instanceof DateTimeImmutable || !is_array($errors) || ($errors['warning_count'] ?? 0) > 0 || ($errors['error_count'] ?? 0) > 0) {
+        return null;
+    }
+
+    return $dt->format('Y-m-d');
+}
+
+$reportType = (string) ($_GET['report_type'] ?? 'all');
+if ($reportType !== 'daily' && $reportType !== 'weekly') {
+    $reportType = 'all';
+}
+$fromDate = reports_normalize_date_filter((string) ($_GET['from'] ?? ''));
+$toDate = reports_normalize_date_filter((string) ($_GET['to'] ?? ''));
+$filterParams = [];
+if ($reportType !== 'all') {
+    $filterParams['report_type'] = $reportType;
+}
+if ($fromDate !== null) {
+    $filterParams['from'] = $fromDate;
+}
+if ($toDate !== null) {
+    $filterParams['to'] = $toDate;
+}
+
 $pdo = Database::connection();
 $service = new ReportService($pdo);
 $user = current_user();
 $brandTitle = (string) config('app.brand.title', config('APP_NAME', 'Uptime Monitor'));
 $notice = null;
+$postAction = e(url_for('/reports.php', $filterParams));
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = (string) ($_POST['action'] ?? '');
@@ -45,7 +79,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $previewDaily = $service->generate('daily');
 $previewWeekly = $service->generate('weekly');
-$runs = $service->recentRuns(40);
+$runs = $service->recentRuns(40, $filterParams);
 ?>
 <!doctype html>
 <html lang="tr">
@@ -57,7 +91,7 @@ $runs = $service->recentRuns(40);
         :root { --accent:#0ea5e9; --danger:#ef4444; --success:#10b981; --warning:#f59e0b; --text:#0f172a; --muted:#475569; --card:rgba(255,255,255,0.88); --line:rgba(148,163,184,0.35); --bg1:#f8fafc; --bg2:#ecfeff; }
         html[data-theme="dark"] { --text:#e2e8f0; --muted:#94a3b8; --card:rgba(15,23,42,0.84); --line:rgba(71,85,105,0.5); --bg1:#0b1220; --bg2:#111827; }
         *{box-sizing:border-box} body{margin:0;min-height:100vh;color:var(--text);font-family:"IBM Plex Sans","Segoe UI",Arial,sans-serif;background:radial-gradient(circle at 8% 10%,rgba(14,165,233,.16),transparent 32%),radial-gradient(circle at 92% 18%,rgba(16,185,129,.14),transparent 30%),linear-gradient(160deg,var(--bg1),var(--bg2));}
-        .shell{width:min(1220px,95vw);margin:24px auto 36px}.topbar,.card,.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;backdrop-filter:blur(8px);box-shadow:0 10px 26px rgba(15,23,42,.05)}.topbar{padding:18px 20px;display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap}.title{margin:0;font-size:1.65rem}.subtitle{margin:5px 0 0;color:var(--muted)}.actions{display:flex;gap:8px;flex-wrap:wrap}.btn{border:1px solid var(--line);border-radius:11px;background:rgba(255,255,255,.76);color:var(--text);padding:9px 12px;text-decoration:none;font-weight:700;cursor:pointer}html[data-theme="dark"] .btn{background:rgba(30,41,59,.92);color:#e2e8f0}.btn-primary{color:#fff;border-color:transparent;background:linear-gradient(135deg,var(--accent),#0284c7)}.btn-small{padding:6px 9px;border-radius:8px;font-size:.78rem}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}.card,.panel{padding:14px}.panel{margin-top:12px;overflow:hidden}.panel-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}.panel-actions{display:flex;gap:8px;flex-wrap:wrap}.k{color:var(--muted);font-size:.82rem}.v{margin-top:6px;font-size:1.35rem;font-weight:800}.muted{color:var(--muted)}.notice{margin-top:12px;border-radius:12px;padding:10px}.notice.ok{background:rgba(16,185,129,.14);border:1px solid rgba(16,185,129,.32);color:#065f46}.notice.err{background:rgba(239,68,68,.14);border:1px solid rgba(239,68,68,.32);color:#7f1d1d}html[data-theme="dark"] .notice.ok{color:#bbf7d0}html[data-theme="dark"] .notice.err{color:#fecaca}table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{border-bottom:1px solid var(--line);padding:10px;text-align:left;vertical-align:top}th{font-size:.75rem;text-transform:uppercase;color:var(--muted);background:rgba(148,163,184,.08)}.badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;font-size:.72rem;font-weight:800}.badge.sent{color:#065f46;background:rgba(16,185,129,.18)}.badge.failed{color:#7f1d1d;background:rgba(239,68,68,.18)}.badge.skipped{color:#92400e;background:rgba(245,158,11,.18)}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.8rem;white-space:pre-wrap;word-break:break-word}.report-preview{max-height:360px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:10px;background:rgba(148,163,184,.08)}.card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}details summary{cursor:pointer;font-weight:700}@media(max-width:900px){.grid{grid-template-columns:1fr}}
+        .shell{width:min(1220px,95vw);margin:24px auto 36px}.topbar,.card,.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;backdrop-filter:blur(8px);box-shadow:0 10px 26px rgba(15,23,42,.05)}.topbar{padding:18px 20px;display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap}.title{margin:0;font-size:1.65rem}.subtitle{margin:5px 0 0;color:var(--muted)}.actions{display:flex;gap:8px;flex-wrap:wrap}.btn{border:1px solid var(--line);border-radius:11px;background:rgba(255,255,255,.76);color:var(--text);padding:9px 12px;text-decoration:none;font-weight:700;cursor:pointer}html[data-theme="dark"] .btn{background:rgba(30,41,59,.92);color:#e2e8f0}.btn-primary{color:#fff;border-color:transparent;background:linear-gradient(135deg,var(--accent),#0284c7)}.btn-small{padding:6px 9px;border-radius:8px;font-size:.78rem}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}.card,.panel{padding:14px}.panel{margin-top:12px;overflow:hidden}.panel-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}.panel-actions{display:flex;gap:8px;flex-wrap:wrap}.report-filters{display:grid;grid-template-columns:150px 150px 150px auto;gap:8px;align-items:end;margin-top:12px}.report-filters label{display:block;color:var(--muted);font-size:.78rem;margin:0 0 4px}.report-filters input,.report-filters select{width:100%}.report-filter-actions{display:flex;gap:8px;flex-wrap:wrap}.k{color:var(--muted);font-size:.82rem}.v{margin-top:6px;font-size:1.35rem;font-weight:800}.muted{color:var(--muted)}.notice{margin-top:12px;border-radius:12px;padding:10px}.notice.ok{background:rgba(16,185,129,.14);border:1px solid rgba(16,185,129,.32);color:#065f46}.notice.err{background:rgba(239,68,68,.14);border:1px solid rgba(239,68,68,.32);color:#7f1d1d}html[data-theme="dark"] .notice.ok{color:#bbf7d0}html[data-theme="dark"] .notice.err{color:#fecaca}table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{border-bottom:1px solid var(--line);padding:10px;text-align:left;vertical-align:top}th{font-size:.75rem;text-transform:uppercase;color:var(--muted);background:rgba(148,163,184,.08)}.badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;font-size:.72rem;font-weight:800}.badge.sent{color:#065f46;background:rgba(16,185,129,.18)}.badge.failed{color:#7f1d1d;background:rgba(239,68,68,.18)}.badge.skipped{color:#92400e;background:rgba(245,158,11,.18)}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.8rem;white-space:pre-wrap;word-break:break-word}.report-preview{max-height:360px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:10px;background:rgba(148,163,184,.08)}.card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}details summary{cursor:pointer;font-weight:700}@media(max-width:900px){.grid{grid-template-columns:1fr}.report-filters{grid-template-columns:1fr 1fr}}
     </style>
 </head>
 <body>
@@ -86,7 +120,7 @@ $runs = $service->recentRuns(40);
             <div class="v"><?= e((string) $previewDaily['period_start']); ?> - <?= e((string) $previewDaily['period_end']); ?></div>
             <p class="muted">Son 24 saatlik uptime, incident, response time, broken link ve link scan özeti.</p>
             <div class="card-actions">
-                <form method="post"><input type="hidden" name="action" value="send_daily"><button class="btn btn-primary" type="submit">Günlük Raporu Gönder</button></form>
+                <form method="post" action="<?= $postAction; ?>"><input type="hidden" name="action" value="send_daily"><button class="btn btn-primary" type="submit">Günlük Raporu Gönder</button></form>
             </div>
             <details style="margin-top:10px;"><summary>Önizleme</summary><pre class="mono report-preview"><?= e((string) $previewDaily['body']); ?></pre></details>
         </article>
@@ -95,7 +129,7 @@ $runs = $service->recentRuns(40);
             <div class="v"><?= e((string) $previewWeekly['period_start']); ?> - <?= e((string) $previewWeekly['period_end']); ?></div>
             <p class="muted">Son 7 günlük uptime, incident, response time, broken link ve link scan özeti.</p>
             <div class="card-actions">
-                <form method="post"><input type="hidden" name="action" value="send_weekly"><button class="btn btn-primary" type="submit">Haftalık Raporu Gönder</button></form>
+                <form method="post" action="<?= $postAction; ?>"><input type="hidden" name="action" value="send_weekly"><button class="btn btn-primary" type="submit">Haftalık Raporu Gönder</button></form>
             </div>
             <details style="margin-top:10px;"><summary>Önizleme</summary><pre class="mono report-preview"><?= e((string) $previewWeekly['body']); ?></pre></details>
         </article>
@@ -105,11 +139,31 @@ $runs = $service->recentRuns(40);
         <div class="panel-head">
             <h2>Rapor Geçmişi</h2>
             <div class="panel-actions">
-                <a class="btn btn-small" href="<?= e(url_for('/reports_export.php', ['type' => 'all'])); ?>">CSV</a>
-                <a class="btn btn-small" href="<?= e(url_for('/reports_export.php', ['type' => 'daily'])); ?>">Daily CSV</a>
-                <a class="btn btn-small" href="<?= e(url_for('/reports_export.php', ['type' => 'weekly'])); ?>">Weekly CSV</a>
+                <a class="btn btn-small" href="<?= e(url_for('/reports_export.php', $filterParams)); ?>">CSV</a>
             </div>
         </div>
+        <form method="get" class="report-filters" action="<?= e(url_for('/reports.php')); ?>">
+            <div>
+                <label>Type</label>
+                <select name="report_type">
+                    <option value="all" <?= $reportType === 'all' ? 'selected' : ''; ?>>All</option>
+                    <option value="daily" <?= $reportType === 'daily' ? 'selected' : ''; ?>>Daily</option>
+                    <option value="weekly" <?= $reportType === 'weekly' ? 'selected' : ''; ?>>Weekly</option>
+                </select>
+            </div>
+            <div>
+                <label>From</label>
+                <input type="date" name="from" value="<?= e((string) ($fromDate ?? '')); ?>">
+            </div>
+            <div>
+                <label>To</label>
+                <input type="date" name="to" value="<?= e((string) ($toDate ?? '')); ?>">
+            </div>
+            <div class="report-filter-actions">
+                <button class="btn btn-primary" type="submit">Filtrele</button>
+                <a class="btn" href="<?= e(url_for('/reports.php')); ?>">Sıfırla</a>
+            </div>
+        </form>
         <table>
             <thead><tr><th>ID</th><th>Type</th><th>Period</th><th>Email</th><th>Telegram</th><th>Created</th><th>Action</th></tr></thead>
             <tbody>
@@ -122,7 +176,7 @@ $runs = $service->recentRuns(40);
                     <td><span class="badge <?= e(report_status_class((string) $run['telegram_status'])); ?>"><?= e((string) $run['telegram_status']); ?></span><div class="muted mono"><?= e((string) ($run['telegram_error'] ?? '')); ?></div></td>
                     <td><?= e((string) $run['created_at']); ?></td>
                     <td>
-                        <form method="post">
+                        <form method="post" action="<?= $postAction; ?>">
                             <input type="hidden" name="action" value="resend">
                             <input type="hidden" name="id" value="<?= (int) $run['id']; ?>">
                             <button class="btn btn-small" type="submit">Tekrar Gönder</button>

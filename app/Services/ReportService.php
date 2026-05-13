@@ -105,9 +105,17 @@ final class ReportService
     /**
      * @return array<int, array<string, mixed>>
      */
-    public function recentRuns(int $limit = 30): array
+    public function recentRuns(int $limit = 30, array $filters = []): array
     {
-        $stmt = $this->pdo->prepare('SELECT * FROM report_runs ORDER BY id DESC LIMIT :limit');
+        $query = $this->buildReportRunQuery($filters);
+        $sql = 'SELECT * FROM report_runs';
+        if ($query['where'] !== []) {
+            $sql .= ' WHERE ' . implode(' AND ', $query['where']);
+        }
+        $sql .= ' ORDER BY id DESC LIMIT :limit';
+
+        $stmt = $this->pdo->prepare($sql);
+        $this->bindReportRunParams($stmt, $query['params']);
         $stmt->bindValue(':limit', max(1, $limit), PDO::PARAM_INT);
         $stmt->execute();
         return $stmt->fetchAll();
@@ -117,19 +125,22 @@ final class ReportService
      * @param string $type
      * @return array<int, array<string, mixed>>
      */
-    public function exportRuns(string $type = 'all'): array
+    public function exportRuns(string $type = 'all', array $filters = []): array
     {
         $type = $this->normalizeReportType($type);
-        $sql = 'SELECT * FROM report_runs';
-        $params = [];
         if ($type !== 'all') {
-            $sql .= ' WHERE report_type = :report_type';
-            $params['report_type'] = $type;
+            $filters['report_type'] = $type;
+        }
+        $query = $this->buildReportRunQuery($filters);
+        $sql = 'SELECT * FROM report_runs';
+        if ($query['where'] !== []) {
+            $sql .= ' WHERE ' . implode(' AND ', $query['where']);
         }
         $sql .= ' ORDER BY id DESC';
 
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($params);
+        $this->bindReportRunParams($stmt, $query['params']);
+        $stmt->execute();
         return $stmt->fetchAll();
     }
 
@@ -568,6 +579,46 @@ final class ReportService
         return $type === 'daily' || $type === 'weekly' ? $type : 'all';
     }
 
+    /**
+     * @param array<string, mixed> $filters
+     * @return array{where: array<int, string>, params: array<string, mixed>}
+     */
+    private function buildReportRunQuery(array $filters): array
+    {
+        $where = [];
+        $params = [];
+
+        $type = $this->normalizeReportType((string) ($filters['report_type'] ?? $filters['type'] ?? 'all'));
+        if ($type !== 'all') {
+            $where[] = 'report_type = :report_type';
+            $params['report_type'] = $type;
+        }
+
+        $from = $this->normalizeDateFilter((string) ($filters['from'] ?? ''));
+        if ($from !== null) {
+            $where[] = 'date(created_at) >= :from_date';
+            $params['from_date'] = $from;
+        }
+
+        $to = $this->normalizeDateFilter((string) ($filters['to'] ?? ''));
+        if ($to !== null) {
+            $where[] = 'date(created_at) <= :to_date';
+            $params['to_date'] = $to;
+        }
+
+        return ['where' => $where, 'params' => $params];
+    }
+
+    /**
+     * @param array<string, mixed> $params
+     */
+    private function bindReportRunParams(PDOStatement $stmt, array $params): void
+    {
+        foreach ($params as $key => $value) {
+            $stmt->bindValue(':' . $key, (string) $value);
+        }
+    }
+
     private function escape(string $value): string
     {
         return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
@@ -579,6 +630,22 @@ final class ReportService
             return '-';
         }
         return (string) (int) $value;
+    }
+
+    private function normalizeDateFilter(string $value): ?string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+
+        $dt = DateTimeImmutable::createFromFormat('Y-m-d', $value);
+        $errors = DateTimeImmutable::getLastErrors();
+        if (!$dt instanceof DateTimeImmutable || !is_array($errors) || ($errors['warning_count'] ?? 0) > 0 || ($errors['error_count'] ?? 0) > 0) {
+            return null;
+        }
+
+        return $dt->format('Y-m-d');
     }
 
     private function ensureReportRunsTable(): void

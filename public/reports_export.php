@@ -7,11 +7,47 @@ require_auth();
 
 $pdo = Database::connection();
 $service = new ReportService($pdo);
-$type = (string) ($_GET['type'] ?? 'all');
-$runs = $service->exportRuns($type);
 
-$safeType = $type === 'daily' || $type === 'weekly' ? $type : 'all';
-$filename = 'report-runs-' . $safeType . '-' . (new DateTimeImmutable('now'))->format('Ymd-His') . '.csv';
+function reports_export_normalize_date_filter(string $value): ?string
+{
+    $value = trim($value);
+    if ($value === '') {
+        return null;
+    }
+
+    $dt = DateTimeImmutable::createFromFormat('Y-m-d', $value);
+    $errors = DateTimeImmutable::getLastErrors();
+    if (!$dt instanceof DateTimeImmutable || !is_array($errors) || ($errors['warning_count'] ?? 0) > 0 || ($errors['error_count'] ?? 0) > 0) {
+        return null;
+    }
+
+    return $dt->format('Y-m-d');
+}
+
+$type = (string) ($_GET['report_type'] ?? ($_GET['type'] ?? 'all'));
+if ($type !== 'daily' && $type !== 'weekly') {
+    $type = 'all';
+}
+$filters = [];
+if ($type !== 'all') {
+    $filters['report_type'] = $type;
+}
+$fromDate = reports_export_normalize_date_filter((string) ($_GET['from'] ?? ''));
+if ($fromDate !== null) {
+    $filters['from'] = $fromDate;
+}
+$toDate = reports_export_normalize_date_filter((string) ($_GET['to'] ?? ''));
+if ($toDate !== null) {
+    $filters['to'] = $toDate;
+}
+
+$runs = $service->exportRuns($type, $filters);
+
+$filenameType = $type;
+if ($fromDate !== null || $toDate !== null) {
+    $filenameType .= '-filtered';
+}
+$filename = 'report-runs-' . $filenameType . '-' . (new DateTimeImmutable('now'))->format('Ymd-His') . '.csv';
 
 header('Content-Type: text/csv; charset=UTF-8');
 header('Content-Disposition: attachment; filename="' . $filename . '"');

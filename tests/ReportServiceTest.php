@@ -92,9 +92,13 @@ assert_true_report((int) $pdo->query('SELECT COUNT(*) FROM report_runs')->fetchC
 $allRuns = $service->exportRuns('all');
 $dailyRuns = $service->exportRuns('daily');
 $weeklyRuns = $service->exportRuns('weekly');
+$filteredDailyRuns = $service->exportRuns('all', ['report_type' => 'daily']);
+$filteredRangeRuns = $service->exportRuns('all', ['from' => '2026-05-13', 'to' => '2026-05-13']);
 assert_true_report(count($allRuns) === 2, 'Export all should return both rows');
 assert_true_report(count($dailyRuns) === 1, 'Export daily should return one row');
 assert_true_report(count($weeklyRuns) === 1, 'Export weekly should return one row');
+assert_true_report(count($filteredDailyRuns) === 1, 'Filtered export by report_type should return one daily row');
+assert_true_report(count($filteredRangeRuns) === 2, 'Filtered export by date range should return both rows');
 assert_true_report((string) $allRuns[0]['html_body'] !== '', 'Stored report HTML should not be empty');
 
 echo "ReportServiceTest OK\n";

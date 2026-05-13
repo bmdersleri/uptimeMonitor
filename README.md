@@ -17,7 +17,7 @@ Live site:
 - Notification retry queue and retry worker
 - Daily and weekly operational reports with email/Telegram delivery
 - Report history and resend screen at `/reports.php`
-- Report CSV export at `/reports_export.php`
+- Report history filters by type and date range, with filtered CSV export at `/reports_export.php`
 - System health screen at `/health.php`
 - Monitor detail page with recent checks, incidents, uptime trends, and link-scan summary
 - Broken links screen at `/broken_links.php`

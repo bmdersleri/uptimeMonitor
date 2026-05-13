@@ -16,12 +16,16 @@ final class LinkScanProcessLauncher
     /** @var string */
     private $projectRoot;
 
-    public function __construct(callable $executor = null, ?string $osFamily = null, ?string $phpBinary = null, ?string $projectRoot = null)
+    /** @var string */
+    private $launchLogPath;
+
+    public function __construct(callable $executor = null, ?string $osFamily = null, ?string $phpBinary = null, ?string $projectRoot = null, ?string $launchLogPath = null)
     {
         $this->executor = $executor;
         $this->osFamily = $osFamily ?? PHP_OS_FAMILY;
-        $this->phpBinary = $phpBinary ?? (defined('PHP_BINARY') && PHP_BINARY !== '' ? PHP_BINARY : 'php');
         $this->projectRoot = $projectRoot ?? dirname(__DIR__, 2);
+        $this->phpBinary = $phpBinary ?? $this->detectPhpBinary();
+        $this->launchLogPath = $launchLogPath ?? $this->projectRoot . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'logs' . DIRECTORY_SEPARATOR . 'manual_link_scan_launch.log';
     }
 
     public function launchManualScan(int $monitorId, ?int $maxDepth = null): bool
@@ -45,13 +49,36 @@ final class LinkScanProcessLauncher
         }
 
         $baseCommand = implode(' ', $parts);
+        $logFile = escapeshellarg($this->launchLogPath);
         if (strcasecmp($this->osFamily, 'Windows') === 0) {
-            $command = 'cmd /c start /B "" ' . $baseCommand . ' > NUL 2>&1';
+            $command = 'cmd /c start /B "" ' . $baseCommand . ' >> ' . $logFile . ' 2>&1';
         } else {
-            $command = 'nohup ' . $baseCommand . ' >/dev/null 2>&1 &';
+            $command = 'nohup ' . $baseCommand . ' >> ' . $logFile . ' 2>&1 &';
         }
 
         return $this->runCommand($command);
+    }
+
+    private function detectPhpBinary(): string
+    {
+        $configured = trim((string) config('PHP_CLI_BINARY', ''));
+        if ($configured !== '') {
+            return $configured;
+        }
+
+        if (strcasecmp($this->osFamily, 'Windows') !== 0) {
+            foreach (['/usr/bin/php', '/usr/local/bin/php', 'php'] as $candidate) {
+                if ($candidate === 'php' || is_file($candidate)) {
+                    return $candidate;
+                }
+            }
+        }
+
+        if (defined('PHP_BINARY') && PHP_BINARY !== '') {
+            return PHP_BINARY;
+        }
+
+        return 'php';
     }
 
     private function runCommand(string $command): bool

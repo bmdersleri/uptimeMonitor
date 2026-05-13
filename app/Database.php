@@ -29,8 +29,9 @@ final class Database
             $dsn = 'sqlite:' . $path;
             self::$connection = new PDO($dsn);
             self::$connection->exec('PRAGMA foreign_keys = ON');
-            self::$connection->exec('PRAGMA busy_timeout = 1000');
-            self::$connection->setAttribute(PDO::ATTR_TIMEOUT, 1);
+            self::$connection->exec('PRAGMA journal_mode = WAL');
+            self::$connection->exec('PRAGMA busy_timeout = 5000');
+            self::$connection->setAttribute(PDO::ATTR_TIMEOUT, 5);
         } else {
             $host = (string) config('DB_HOST', '127.0.0.1');
             $port = (string) config('DB_PORT', '3306');

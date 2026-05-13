@@ -1887,6 +1887,8 @@ The next major implementation phase should focus on report generation and delive
 Initial reporting implementation is now in place:
 
 - `ReportService` generates daily and weekly plain-text operational summaries.
+- `ReportService` also generates HTML bodies for email delivery and stores them in `report_runs`.
 - `/reports.php` provides preview, manual send, report history, and resend actions.
+- `/reports_export.php` downloads report history as CSV.
 - `report_runs` stores each generated report and email/Telegram delivery status.
 - `cron/daily_report.php` and `cron/weekly_report.php` can be scheduled from hosting cron.

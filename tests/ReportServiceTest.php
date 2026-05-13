@@ -83,5 +83,18 @@ assert_true_report(strpos((string) $report['body'], 'Beta') !== false, 'Report b
 $result = $service->createAndSend('daily', new DateTimeImmutable('2026-05-13 12:00:00'));
 assert_true_report((int) $result['id'] === 1, 'Report run should be stored');
 assert_true_report((int) $pdo->query('SELECT COUNT(*) FROM report_runs')->fetchColumn() === 1, 'report_runs should have one row');
+assert_true_report(strpos((string) $result['report']['html_body'], '<table') !== false, 'HTML body should be generated');
+
+$weeklyResult = $service->createAndSend('weekly', new DateTimeImmutable('2026-05-13 12:00:00'));
+assert_true_report((int) $weeklyResult['id'] === 2, 'Second report run should be stored');
+assert_true_report((int) $pdo->query('SELECT COUNT(*) FROM report_runs')->fetchColumn() === 2, 'report_runs should have two rows');
+
+$allRuns = $service->exportRuns('all');
+$dailyRuns = $service->exportRuns('daily');
+$weeklyRuns = $service->exportRuns('weekly');
+assert_true_report(count($allRuns) === 2, 'Export all should return both rows');
+assert_true_report(count($dailyRuns) === 1, 'Export daily should return one row');
+assert_true_report(count($weeklyRuns) === 1, 'Export weekly should return one row');
+assert_true_report((string) $allRuns[0]['html_body'] !== '', 'Stored report HTML should not be empty');
 
 echo "ReportServiceTest OK\n";

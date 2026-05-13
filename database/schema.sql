@@ -103,6 +103,7 @@ CREATE TABLE IF NOT EXISTS report_runs (
     period_end TEXT NOT NULL,
     subject TEXT NOT NULL,
     body TEXT NOT NULL,
+    html_body TEXT NULL,
     email_status TEXT NOT NULL DEFAULT 'skipped',
     telegram_status TEXT NOT NULL DEFAULT 'skipped',
     email_error TEXT NULL,

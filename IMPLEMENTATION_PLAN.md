@@ -20,6 +20,7 @@ Completed:
 - Notification settings and test-send screen
 - Daily and weekly email/Telegram report delivery
 - Report history page with resend action
+- Report CSV export endpoint and download buttons
 - System health screen for runtime, cron, queue, and storage checks
 - Modern dashboard with status KPIs
 - Monitor create/edit/detail flows
@@ -183,7 +184,9 @@ Completed:
 Completed:
 - `ReportService` for daily and weekly operational summaries
 - `report_runs` table for generated report history and channel delivery status
+- `html_body` column in `report_runs` so resend keeps the HTML email payload
 - `/reports.php` page for preview, manual send, history, and resend
+- `/reports_export.php` CSV export for report history
 - `cron/daily_report.php` and `cron/weekly_report.php`
 - Report navigation links from the main operational screens
 - Health-screen log freshness entries for report cron logs
@@ -246,7 +249,6 @@ php database/migrate_sqlite.php
 
 Recommended future work:
 - Add CSV export for report rows and report detail data.
-- Add HTML email templates if plain-text summaries are not enough.
 - Add report retention cleanup after a configurable number of days.
 - Add CSRF tokens to monitor action forms.
 - Store scan depth on each `link_scan_jobs` row for historical audit.

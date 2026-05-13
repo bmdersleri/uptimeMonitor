@@ -84,7 +84,11 @@ final class ReportService
             return null;
         }
 
-        $delivery = $this->sendChannels((string) $row['subject'], (string) $row['body'], null);
+        $delivery = $this->sendChannels(
+            (string) $row['subject'],
+            (string) $row['body'],
+            isset($row['html_body']) ? (string) $row['html_body'] : null
+        );
         $this->updateRunDelivery($id, $delivery);
         $row['email_status'] = $delivery['email_status'];
         $row['telegram_status'] = $delivery['telegram_status'];
@@ -106,6 +110,26 @@ final class ReportService
         $stmt = $this->pdo->prepare('SELECT * FROM report_runs ORDER BY id DESC LIMIT :limit');
         $stmt->bindValue(':limit', max(1, $limit), PDO::PARAM_INT);
         $stmt->execute();
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * @param string $type
+     * @return array<int, array<string, mixed>>
+     */
+    public function exportRuns(string $type = 'all'): array
+    {
+        $type = $this->normalizeReportType($type);
+        $sql = 'SELECT * FROM report_runs';
+        $params = [];
+        if ($type !== 'all') {
+            $sql .= ' WHERE report_type = :report_type';
+            $params['report_type'] = $type;
+        }
+        $sql .= ' ORDER BY id DESC';
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
         return $stmt->fetchAll();
     }
 
@@ -461,11 +485,11 @@ final class ReportService
         $now = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
         $stmt = $this->pdo->prepare("
             INSERT INTO report_runs (
-                report_type, period_start, period_end, subject, body,
+                report_type, period_start, period_end, subject, body, html_body,
                 email_status, telegram_status, email_error, telegram_error,
                 created_at, sent_at
             ) VALUES (
-                :report_type, :period_start, :period_end, :subject, :body,
+                :report_type, :period_start, :period_end, :subject, :body, :html_body,
                 :email_status, :telegram_status, :email_error, :telegram_error,
                 :created_at, :sent_at
             )
@@ -476,6 +500,7 @@ final class ReportService
             'period_end' => (string) $report['period_end'],
             'subject' => (string) $report['subject'],
             'body' => (string) $report['body'],
+            'html_body' => (string) ($report['html_body'] ?? ''),
             'email_status' => (string) $delivery['email_status'],
             'telegram_status' => (string) $delivery['telegram_status'],
             'email_error' => $delivery['email_error'],
@@ -538,6 +563,11 @@ final class ReportService
         return $hours . 'h ' . ($minutes % 60) . 'm';
     }
 
+    private function normalizeReportType(string $type): string
+    {
+        return $type === 'daily' || $type === 'weekly' ? $type : 'all';
+    }
+
     private function escape(string $value): string
     {
         return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
@@ -579,6 +609,9 @@ final class ReportService
         }
         if (!$this->columnExists('broken_links', 'ignored_at')) {
             $this->pdo->exec('ALTER TABLE broken_links ADD COLUMN ignored_at TEXT NULL');
+        }
+        if (!$this->columnExists('report_runs', 'html_body')) {
+            $this->pdo->exec('ALTER TABLE report_runs ADD COLUMN html_body TEXT NULL');
         }
     }
 

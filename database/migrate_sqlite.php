@@ -70,6 +70,7 @@ $pdo->exec("
         period_end TEXT NOT NULL,
         subject TEXT NOT NULL,
         body TEXT NOT NULL,
+        html_body TEXT NULL,
         email_status TEXT NOT NULL DEFAULT 'skipped',
         telegram_status TEXT NOT NULL DEFAULT 'skipped',
         email_error TEXT NULL,
@@ -79,5 +80,10 @@ $pdo->exec("
     )
 ");
 $pdo->exec("CREATE INDEX IF NOT EXISTS idx_report_runs_type_time ON report_runs (report_type, created_at)");
+
+if (!column_exists($pdo, 'report_runs', 'html_body')) {
+    $pdo->exec("ALTER TABLE report_runs ADD COLUMN html_body TEXT NULL");
+    echo "[migrate] report_runs.html_body eklendi\n";
+}
 
 echo "[migrate] SQLite migration tamam.\n";

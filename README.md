@@ -17,6 +17,7 @@ Live site:
 - Notification retry queue and retry worker
 - Daily and weekly operational reports with email/Telegram delivery
 - Report history and resend screen at `/reports.php`
+- Report CSV export at `/reports_export.php`
 - System health screen at `/health.php`
 - Monitor detail page with recent checks, incidents, uptime trends, and link-scan summary
 - Broken links screen at `/broken_links.php`
@@ -67,6 +68,8 @@ Each selected job on `/link_scans.php` includes a scan quality report with the m
 The jobs screen also includes an authenticated full reset action. It clears `link_scan_jobs`, `discovered_links`, `broken_links`, and live scan state files while preserving monitors, uptime checks, incidents, notification history, users, and ignore rules. Use it when scan history needs a clean restart without rebuilding the whole application database.
 
 Manual scans are launched through `LinkScanProcessLauncher` as a detached worker when the hosting environment supports shell execution. On shared hosting where `/usr/bin/php` may run as CGI/FastCGI instead of CLI, `cron/run_manual_link_scan.php` accepts only shell-provided arguments or environment values and still rejects browser-triggered HTTP execution.
+
+Report emails are sent as multipart plain-text and HTML messages. Telegram keeps the plain-text body.
 
 ## Operations Screens
 
@@ -201,6 +204,7 @@ php cron/weekly_report.php
 - Link scan full reset endpoint: `/link_scan_reset.php` (POST)
 - Retry queue: `/retry_queue.php`
 - Reports: `/reports.php`
+- Report CSV export: `/reports_export.php`
 - Notifications: `/notifications.php`
 - System health: `/health.php`
 - Logout: `/logout.php`

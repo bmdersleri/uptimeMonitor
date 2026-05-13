@@ -30,7 +30,7 @@ final class ReportService
 
         $subject = (string) config('notifications.subject_prefix', '[Uptime]')
             . ' '
-            . ($type === 'weekly' ? 'WEEKLY REPORT' : 'DAILY REPORT')
+            . (string) config('notifications.events.' . $type . '_report', $type === 'weekly' ? 'WEEKLY REPORT' : 'DAILY REPORT')
             . ' '
             . $now->format('Y-m-d');
 
@@ -256,7 +256,7 @@ final class ReportService
     private function renderText(array $report): string
     {
         $summary = $report['summary'];
-        $typeLabel = $report['type'] === 'weekly' ? 'Haftalik Operasyon Raporu' : 'Gunluk Operasyon Raporu';
+        $typeLabel = $report['type'] === 'weekly' ? 'Weekly Operational Report' : 'Daily Operational Report';
         $lines = [];
         $lines[] = $typeLabel;
         $lines[] = 'Period: ' . (string) $report['period_start'] . ' - ' . (string) $report['period_end'];

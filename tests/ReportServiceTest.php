@@ -76,7 +76,7 @@ assert_true_report((int) $summary['active_broken_links'] === 1, 'Active broken l
 assert_true_report((int) $summary['new_broken_links'] === 1, 'New broken links should count links first detected in period');
 assert_true_report((int) $summary['resolved_broken_links'] === 1, 'Resolved broken links should be 1');
 assert_true_report((int) $summary['completed_link_scans'] === 1, 'Completed link scans should be 1');
-assert_true_report(strpos((string) $report['body'], 'Gunluk Operasyon Raporu') !== false, 'Report body should include daily title');
+assert_true_report(strpos((string) $report['body'], 'Daily Operational Report') !== false, 'Report body should include daily title');
 assert_true_report(strpos((string) $report['body'], 'Beta') !== false, 'Report body should include monitor highlights');
 
 $result = $service->createAndSend('daily', new DateTimeImmutable('2026-05-13 12:00:00'));

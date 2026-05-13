@@ -8,6 +8,8 @@ return [
         'incident_opened' => 'DOWN',
         'incident_recovered' => 'RECOVERED',
         'broken_link_summary' => 'BROKEN LINKS',
+        'daily_report' => 'DAILY REPORT',
+        'weekly_report' => 'WEEKLY REPORT',
     ],
     'broken_links' => [
         'min_occurrence_before_notify' => 2,

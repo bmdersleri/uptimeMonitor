@@ -31,44 +31,61 @@ if (session_status() === PHP_SESSION_ACTIVE) {
 
 $pdo = Database::connection();
 $runner = new LinkScanRunner($pdo);
+$scanRepo = new LinkScanRepository($pdo);
+
+try {
+    $scanRepo->closeStaleRunningJobs((int) config('DEFAULT_LINK_SCAN_STALE_AFTER_MINUTES', '60'));
+
+    $stmt = $pdo->prepare("SELECT * FROM monitors WHERE id = :id LIMIT 1");
+    $stmt->execute(['id' => $monitorId]);
+    $monitor = $stmt->fetch();
+    if (!is_array($monitor)) {
+        http_response_code(404);
+        echo json_encode(['ok' => false, 'message' => 'Monitör bulunamadı.', 'job_id' => null]);
+        exit;
+    }
+    if ((int) ($monitor['is_active'] ?? 0) !== 1) {
+        http_response_code(409);
+        echo json_encode(['ok' => false, 'message' => 'Monitör pasif durumda.', 'job_id' => null]);
+        exit;
+    }
+    if ((int) ($monitor['link_scan_enabled'] ?? 1) !== 1) {
+        http_response_code(409);
+        echo json_encode(['ok' => false, 'message' => 'Bu monitörde link scan kapalı.', 'job_id' => null]);
+        exit;
+    }
+
+    $runningJob = $scanRepo->findAnyRunningWithMonitor();
+    if ($runningJob !== null) {
+        $runningMonitorId = (int) ($runningJob['monitor_id'] ?? 0);
+        http_response_code(409);
+        echo json_encode([
+            'ok' => false,
+            'message' => $runningMonitorId === $monitorId
+                ? 'Bu monitör için zaten çalışan bir scan job var.'
+                : 'Başka bir link scan job çalışıyor. Aynı anda tek job çalıştırılabilir.',
+            'job_id' => (int) ($runningJob['id'] ?? 0),
+        ]);
+        exit;
+    }
+
+    $launcher = new LinkScanProcessLauncher();
+    if ($launcher->launchManualScan($monitorId, $maxDepth)) {
+        echo json_encode([
+            'ok' => true,
+            'message' => 'Scan arka plan worker olarak başlatıldı. Canlı durum panelinden takip edebilirsiniz.',
+            'job_id' => null,
+        ]);
+        exit;
+    }
+} catch (Throwable $e) {
+    http_response_code(500);
+    echo json_encode(['ok' => false, 'message' => $e->getMessage(), 'job_id' => null]);
+    exit;
+}
 
 if (function_exists('fastcgi_finish_request')) {
     try {
-        $scanRepo = new LinkScanRepository($pdo);
-        $scanRepo->closeStaleRunningJobs((int) config('DEFAULT_LINK_SCAN_STALE_AFTER_MINUTES', '60'));
-
-        $stmt = $pdo->prepare("SELECT * FROM monitors WHERE id = :id LIMIT 1");
-        $stmt->execute(['id' => $monitorId]);
-        $monitor = $stmt->fetch();
-        if (!is_array($monitor)) {
-            http_response_code(404);
-            echo json_encode(['ok' => false, 'message' => 'Monitör bulunamadı.', 'job_id' => null]);
-            exit;
-        }
-        if ((int) ($monitor['is_active'] ?? 0) !== 1) {
-            http_response_code(409);
-            echo json_encode(['ok' => false, 'message' => 'Monitör pasif durumda.', 'job_id' => null]);
-            exit;
-        }
-        if ((int) ($monitor['link_scan_enabled'] ?? 1) !== 1) {
-            http_response_code(409);
-            echo json_encode(['ok' => false, 'message' => 'Bu monitörde link scan kapalı.', 'job_id' => null]);
-            exit;
-        }
-        $runningJob = $scanRepo->findAnyRunningWithMonitor();
-        if ($runningJob !== null) {
-            $runningMonitorId = (int) ($runningJob['monitor_id'] ?? 0);
-            http_response_code(409);
-            echo json_encode([
-                'ok' => false,
-                'message' => $runningMonitorId === $monitorId
-                    ? 'Bu monitör için zaten çalışan bir scan job var.'
-                    : 'Başka bir link scan job çalışıyor. Aynı anda tek job çalıştırılabilir.',
-                'job_id' => (int) ($runningJob['id'] ?? 0),
-            ]);
-            exit;
-        }
-
         echo json_encode([
             'ok' => true,
             'message' => 'Scan başlatıldı. Canlı durum panelinden takip edebilirsiniz.',

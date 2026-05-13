@@ -49,6 +49,73 @@ function config_all(): array
 }
 
 /**
+ * @param array<string, string> $updates
+ */
+function config_write_env_file(string $path, array $updates): void
+{
+    $updates = array_map(static function ($value): string {
+        return (string) $value;
+    }, $updates);
+
+    $lines = [];
+    if (is_file($path)) {
+        $existing = file($path, FILE_IGNORE_NEW_LINES);
+        if ($existing === false) {
+            throw new RuntimeException('Env dosyasi okunamadi: ' . $path);
+        }
+        $lines = $existing;
+    }
+
+    $seen = [];
+    foreach (array_keys($updates) as $key) {
+        $seen[$key] = false;
+    }
+
+    $output = [];
+    foreach ($lines as $line) {
+        $trimmed = trim($line);
+        if ($trimmed === '' || strpos($trimmed, '#') === 0 || strpos($line, '=') === false) {
+            $output[] = $line;
+            continue;
+        }
+
+        $parts = explode('=', $line, 2);
+        $key = trim((string) $parts[0]);
+        if ($key !== '' && array_key_exists($key, $updates)) {
+            $output[] = $key . '=' . $updates[$key];
+            $seen[$key] = true;
+            continue;
+        }
+
+        $output[] = $line;
+    }
+
+    foreach ($updates as $key => $value) {
+        if (($seen[$key] ?? false) === false) {
+            $output[] = $key . '=' . $value;
+        }
+    }
+
+    $content = implode(PHP_EOL, $output);
+    if ($content !== '') {
+        $content .= PHP_EOL;
+    }
+
+    $written = @file_put_contents($path, $content, LOCK_EX);
+    if ($written === false) {
+        throw new RuntimeException('Env dosyasi yazilamadi: ' . $path);
+    }
+}
+
+/**
+ * @param array<string, string> $updates
+ */
+function config_update_env_values(array $updates): void
+{
+    config_write_env_file(CONFIG_ENV_FILE, $updates);
+}
+
+/**
  * @return array<string, array<string, mixed>>
  */
 function config_file_groups(): array

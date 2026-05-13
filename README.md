@@ -13,7 +13,7 @@ Live site:
 - Cron-based uptime checks
 - Incident open/recovery tracking
 - Email and Telegram notification infrastructure
-- Notification settings and test-send screen at `/notifications.php`
+- Notification settings and test-send screen at `/notifications.php` with `.env` persistence
 - Notification retry queue and retry worker
 - Daily and weekly operational reports with email/Telegram delivery
 - Report history and resend screen at `/reports.php`
@@ -272,6 +272,8 @@ TELEGRAM_BOT_TOKEN=
 TELEGRAM_DEFAULT_CHAT_ID=
 NOTIFY_RETRY_BATCH_SIZE=30
 ```
+
+You can also edit these values from `/notifications.php`; the form writes the same keys back to `.env`.
 
 Broken-link notification throttling is configured in `config/notifications.php`.
 

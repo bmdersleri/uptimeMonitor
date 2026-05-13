@@ -43,6 +43,7 @@ final class ReportService
             'monitors' => $monitors,
         ];
         $report['body'] = $this->renderText($report);
+        $report['html_body'] = $this->renderHtml($report);
 
         return $report;
     }
@@ -53,7 +54,11 @@ final class ReportService
     public function createAndSend(string $type, ?DateTimeImmutable $now = null): array
     {
         $report = $this->generate($type, $now);
-        $delivery = $this->sendChannels((string) $report['subject'], (string) $report['body']);
+        $delivery = $this->sendChannels(
+            (string) $report['subject'],
+            (string) $report['body'],
+            (string) $report['html_body']
+        );
         $id = $this->insertRun($report, $delivery);
 
         return [
@@ -79,7 +84,7 @@ final class ReportService
             return null;
         }
 
-        $delivery = $this->sendChannels((string) $row['subject'], (string) $row['body']);
+        $delivery = $this->sendChannels((string) $row['subject'], (string) $row['body'], null);
         $this->updateRunDelivery($id, $delivery);
         $row['email_status'] = $delivery['email_status'];
         $row['telegram_status'] = $delivery['telegram_status'];
@@ -300,11 +305,64 @@ final class ReportService
     }
 
     /**
+     * @param array<string, mixed> $report
+     */
+    private function renderHtml(array $report): string
+    {
+        $summary = $report['summary'];
+        $periodStart = $this->escape((string) $report['period_start']);
+        $periodEnd = $this->escape((string) $report['period_end']);
+        $title = $this->escape($report['type'] === 'weekly' ? 'Weekly Operational Report' : 'Daily Operational Report');
+
+        $rows = '';
+        foreach ((array) $report['monitors'] as $row) {
+            $total = (int) ($row['total_checks'] ?? 0);
+            $up = (int) ($row['up_checks'] ?? 0);
+            $uptime = $total > 0 ? number_format(($up / $total) * 100, 2) : '0.00';
+            $rows .= '<tr>'
+                . '<td>' . $this->escape((string) ($row['name'] ?? '-')) . '</td>'
+                . '<td>' . $this->escape(strtoupper((string) ($row['current_status'] ?? '-'))) . '</td>'
+                . '<td>' . $uptime . '%</td>'
+                . '<td>' . $this->formatNullableInt($row['avg_response_ms'] ?? null) . '</td>'
+                . '<td>' . (int) ($row['open_incidents'] ?? 0) . '</td>'
+                . '<td>' . (int) ($row['active_broken_links'] ?? 0) . '</td>'
+                . '</tr>';
+        }
+        if ($rows === '') {
+            $rows = '<tr><td colspan="6">No active monitors.</td></tr>';
+        }
+
+        $appUrl = rtrim((string) config('APP_URL', ''), '/');
+        $dashboardUrl = $appUrl !== '' ? $this->escape($appUrl . '/index.php') : '#';
+        $reportsUrl = $appUrl !== '' ? $this->escape($appUrl . '/reports.php') : '#';
+
+        return '<!doctype html><html><body style="margin:0;padding:0;background:#f5f7fb;font-family:Arial,sans-serif;color:#0f172a;">'
+            . '<div style="max-width:760px;margin:0 auto;padding:24px;">'
+            . '<div style="background:#ffffff;border:1px solid #dbe2ea;border-radius:12px;padding:20px;">'
+            . '<h1 style="margin:0 0 8px;font-size:22px;">' . $title . '</h1>'
+            . '<p style="margin:0 0 16px;color:#475569;">Period: ' . $periodStart . ' - ' . $periodEnd . '</p>'
+            . '<table style="width:100%;border-collapse:collapse;margin-bottom:18px;">'
+            . '<tr><td style="padding:6px 0;"><strong>Active monitors</strong></td><td style="padding:6px 0;">' . (int) $summary['active_monitors'] . ' / ' . (int) $summary['total_monitors'] . '</td></tr>'
+            . '<tr><td style="padding:6px 0;"><strong>Uptime</strong></td><td style="padding:6px 0;">' . number_format((float) $summary['uptime_percent'], 2) . '% from ' . (int) $summary['total_checks'] . ' checks</td></tr>'
+            . '<tr><td style="padding:6px 0;"><strong>Incidents</strong></td><td style="padding:6px 0;">' . (int) $summary['incident_count'] . ' new, ' . (int) $summary['open_incidents'] . ' open, downtime ' . $this->escape($this->formatDuration((int) $summary['downtime_seconds'])) . '</td></tr>'
+            . '<tr><td style="padding:6px 0;"><strong>Broken links</strong></td><td style="padding:6px 0;">' . (int) $summary['active_broken_links'] . ' active, ' . (int) $summary['new_broken_links'] . ' new, ' . (int) $summary['resolved_broken_links'] . ' resolved</td></tr>'
+            . '<tr><td style="padding:6px 0;"><strong>Link scans</strong></td><td style="padding:6px 0;">' . (int) $summary['completed_link_scans'] . ' completed, ' . (int) $summary['failed_link_scans'] . ' failed, ' . (int) $summary['running_link_scans'] . ' running</td></tr>'
+            . '</table>'
+            . '<h2 style="margin:0 0 10px;font-size:16px;">Monitor Highlights</h2>'
+            . '<table style="width:100%;border-collapse:collapse;border:1px solid #dbe2ea;">'
+            . '<thead><tr style="background:#f1f5f9;"><th style="text-align:left;padding:8px;">Monitor</th><th style="text-align:left;padding:8px;">Status</th><th style="text-align:left;padding:8px;">Uptime</th><th style="text-align:left;padding:8px;">Avg Response</th><th style="text-align:left;padding:8px;">Open Incidents</th><th style="text-align:left;padding:8px;">Broken</th></tr></thead>'
+            . '<tbody>' . $rows . '</tbody>'
+            . '</table>'
+            . '<p style="margin:18px 0 0;"><a href="' . $dashboardUrl . '" style="color:#0ea5e9;">Dashboard</a> | <a href="' . $reportsUrl . '" style="color:#0ea5e9;">Reports</a></p>'
+            . '</div></div></body></html>';
+    }
+
+    /**
      * @return array<string, string|null>
      */
-    private function sendChannels(string $subject, string $body): array
+    private function sendChannels(string $subject, string $body, ?string $htmlBody): array
     {
-        $email = $this->sendEmail($subject, $body);
+        $email = $this->sendEmail($subject, $body, $htmlBody);
         $telegram = $this->sendTelegram($body);
 
         return [
@@ -318,7 +376,7 @@ final class ReportService
     /**
      * @return array{status: string, error: string|null}
      */
-    private function sendEmail(string $subject, string $body): array
+    private function sendEmail(string $subject, string $body, ?string $htmlBody): array
     {
         if ((string) config('NOTIFY_EMAIL_ENABLED', 'false') !== 'true') {
             return ['status' => 'disabled', 'error' => null];
@@ -329,7 +387,30 @@ final class ReportService
             return ['status' => 'failed', 'error' => 'NOTIFY_EMAIL_TO not set'];
         }
 
-        $ok = @mail($to, $subject, $body, "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8");
+        $headers = [
+            'MIME-Version: 1.0',
+            'Content-Type: text/plain; charset=UTF-8',
+        ];
+        $payload = $body;
+
+        if (is_string($htmlBody) && $htmlBody !== '') {
+            $boundary = '=_uptime_report_' . bin2hex(random_bytes(12));
+            $headers = [
+                'MIME-Version: 1.0',
+                'Content-Type: multipart/alternative; boundary="' . $boundary . '"',
+            ];
+            $payload = "--{$boundary}\r\n"
+                . "Content-Type: text/plain; charset=UTF-8\r\n"
+                . "Content-Transfer-Encoding: 8bit\r\n\r\n"
+                . $body . "\r\n"
+                . "--{$boundary}\r\n"
+                . "Content-Type: text/html; charset=UTF-8\r\n"
+                . "Content-Transfer-Encoding: 8bit\r\n\r\n"
+                . $htmlBody . "\r\n"
+                . "--{$boundary}--";
+        }
+
+        $ok = @mail($to, $subject, $payload, implode("\r\n", $headers));
         return ['status' => $ok ? 'sent' : 'failed', 'error' => $ok ? null : 'mail() returned false'];
     }
 
@@ -455,6 +536,19 @@ final class ReportService
         }
         $hours = intdiv($minutes, 60);
         return $hours . 'h ' . ($minutes % 60) . 'm';
+    }
+
+    private function escape(string $value): string
+    {
+        return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
+    }
+
+    private function formatNullableInt($value): string
+    {
+        if ($value === null || $value === '') {
+            return '-';
+        }
+        return (string) (int) $value;
     }
 
     private function ensureReportRunsTable(): void

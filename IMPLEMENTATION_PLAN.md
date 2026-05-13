@@ -31,13 +31,16 @@ Completed:
 - Link scan job deletion from the jobs screen
 - Paginated link scan job history with date and record-count filters
 - Bulk cleanup for completed/failed link scan jobs
+- Full link scan data reset flow with authenticated endpoint and UI action
 - Automatic stale running job closure
 - Manual link scan trigger
+- Detached manual scan worker launch for shared-hosting reliability
 - Per-monitor link scan enable/disable
 - Per-monitor and manual scan depth control
 - Same-site internal page crawling for link scans
 - Limited parallel resource checks for faster broken-link detection
 - Link scan quality reports on job and monitor detail screens
+- Styled link-scan result UI with readable URL rows and explicit open actions
 - Monitor detail link scan and broken resource summaries
 
 Live deployment target:
@@ -59,6 +62,9 @@ Live deployment target:
 - Link scan jobs warn as possibly stalled after `20` seconds without heartbeat and as needing attention after `60` seconds, but they are not auto-failed by those warnings.
 - Only one link-scan job may run at a time to avoid SQLite write contention and shared-hosting process pressure.
 - Manual scans can override depth for that run without changing the saved monitor setting.
+- Manual scans should start through `LinkScanProcessLauncher` when supported, so the HTTP request can return quickly while `cron/run_manual_link_scan.php` creates and processes the job in the background.
+- `cron/run_manual_link_scan.php` must reject browser/web execution, but it may accept shell-launched CGI/FastCGI PHP when arguments are provided through `$argv` or `UPTIME_MONITOR_ID` / `UPTIME_MAX_DEPTH` environment variables.
+- SQLite runs with WAL mode and a `busy_timeout` to reduce lock contention during link-scan writes and status polling.
 - Broken-link ignore rules are evaluated during scan result persistence, so ignored links do not re-enter the active broken-link queue.
 
 ## 3. Link Scan Design
@@ -90,6 +96,10 @@ Each selected job exposes a quality report derived from `broken_links` within th
 - top broken targets by hit count,
 - source pages by distinct broken target count,
 - status-code distribution.
+
+The selected job UI now treats URL-heavy results as first-class content: open actions are styled as buttons, live recent links are separated into readable rows, and target/source URLs in job details are displayed as distinct blocks with clickable HTTP(S) links.
+
+The full reset flow is intentionally scoped to link-scan data only. It clears `link_scan_jobs`, `discovered_links`, `broken_links`, and live state/cancel files, while preserving users, monitors, uptime checks, incidents, notification logs, retry queue entries, and ignore rules.
 
 ## 4. Sprint Status
 
@@ -133,9 +143,12 @@ Completed:
 - Job pagination, date filters, and bulk cleanup
 - Stale running job cleanup on status checks and manual scan start
 - Manual scan endpoint
+- Detached manual scan worker launcher and shared-hosting CGI/FastCGI fallback
 - Manual scan depth override
+- Full scan data reset endpoint and jobs-screen reset action
 - Same-site internal page crawl support
 - Parallel resource checks within each scanned page
+- SQLite WAL/busy-timeout tuning for shared-hosting scans
 - Broken links table and management screen
 - Broken-link ignore rule management screen and endpoint
 - Broken-link pagination, source-page visibility, and resolved cleanup
@@ -161,6 +174,7 @@ Completed:
 - Broken-link ignore rule repository, schema, endpoint, and UI controls
 - Scan quality report repository methods and UI panels
 - Monitor detail quality summary for the latest link scan
+- Link scan results readability pass for job details and live recent links
 
 ## 5. MVP Completion Criteria
 
@@ -219,6 +233,9 @@ php database/migrate_sqlite.php
 ## 7. Next Improvements
 
 Recommended future work:
+- Build daily and weekly reporting that can be delivered through email and Telegram.
+- Add a reports page with generated report history and resend actions.
+- Add report cron scripts and a notification template for operational summaries.
 - Add CSRF tokens to monitor action forms.
 - Store scan depth on each `link_scan_jobs` row for historical audit.
 - Add richer trend charts for scan quality over time.

@@ -25,17 +25,22 @@ Live site:
 - Link scan job deletion from the jobs screen
 - Paginated link scan job history with date and record-count filters
 - Bulk cleanup for completed/failed link scan jobs
+- Full authenticated link-scan data reset from the jobs screen
 - Automatic stale running job closure
 - Scan quality report for each selected link-scan job
 - Dashboard link-scan job summary and stale job warning
 - Manual link scan with live progress without refreshing the page
+- Manual scans run in a detached worker on shared hosting when possible
+- Shared-hosting-safe manual worker launch with shell/CGI argument fallback
 - Live link-scan heartbeat, stalled-scan warning, and running-row progress updates
 - Single active link-scan job policy to avoid SQLite write contention on shared hosting
+- SQLite WAL mode and busy timeout for better scan/write reliability
 - Per-monitor link scanning can be enabled or disabled
 - Internal same-site crawling from the monitored URL
 - Configurable link scan depth from monitor settings and from the manual scan screen
 - Default link scan depth is `3`
 - Parallel resource checks during link scans for faster broken-link detection
+- Readable job detail UI with styled open actions and separated URL result rows
 
 ## Link Scanning Behavior
 
@@ -56,6 +61,10 @@ Only one link-scan job is allowed to run at a time. This is intentional for the 
 Broken-link ignore rules can be managed from `/broken_links.php`. Rules can match the target URL, the source page URL, or either side. Supported match types are `contains`, `exact`, and `regex`. Ignored links are removed from the active broken-link list and skipped during future scan persistence.
 
 Each selected job on `/link_scans.php` includes a scan quality report with the most frequent broken targets, the source pages that contain the most distinct broken targets, and the status-code distribution for that job window.
+
+The jobs screen also includes an authenticated full reset action. It clears `link_scan_jobs`, `discovered_links`, `broken_links`, and live scan state files while preserving monitors, uptime checks, incidents, notification history, users, and ignore rules. Use it when scan history needs a clean restart without rebuilding the whole application database.
+
+Manual scans are launched through `LinkScanProcessLauncher` as a detached worker when the hosting environment supports shell execution. On shared hosting where `/usr/bin/php` may run as CGI/FastCGI instead of CLI, `cron/run_manual_link_scan.php` accepts only shell-provided arguments or environment values and still rejects browser-triggered HTTP execution.
 
 ## Operations Screens
 
@@ -116,8 +125,10 @@ Notes:
 - All internal links and redirects are generated through `APP_BASE_PATH`.
 - If the app path changes, update only `APP_BASE_PATH`.
 - The repository includes root bridge files such as `index.php`, `login.php`, and `setup_admin.php`, so the app can work when the document root points directly to `/home2/cylcoinc/kirbas.com/uptime`.
+- Endpoint bridge files and their `public/` counterparts must be deployed together, especially for link-scan actions such as run, status, delete, bulk cleanup, and reset.
 - If you see `Index of /uptime/`, the bridge files or `.htaccess` may not have been uploaded yet.
 - Keep `HTTP_SSL_VERIFY=true` in production. Use `HTTP_SSL_VERIFY=false` only for local certificate-chain troubleshooting.
+- If manual scans appear to start but no job row is created, check `storage/logs/manual_link_scan_launch.log` first. A `403 Forbidden` entry usually means the hosting PHP binary is executing as CGI/FastCGI and the deployed `cron/run_manual_link_scan.php` is stale.
 
 ## Optional MySQL Setup
 
@@ -145,6 +156,12 @@ Link scanner worker:
 php cron/scan_links.php
 ```
 
+Detached manual link scan worker:
+
+```bash
+php cron/run_manual_link_scan.php {monitor_id} {max_depth}
+```
+
 Notification retry worker:
 
 ```bash
@@ -167,6 +184,7 @@ php cron/retry_notifications.php
 - Live scan status endpoint: `/link_scan_status.php` (GET)
 - Link scan delete endpoint: `/link_scan_delete.php` (POST)
 - Link scan bulk cleanup endpoint: `/link_scan_bulk_delete.php` (POST)
+- Link scan full reset endpoint: `/link_scan_reset.php` (POST)
 - Retry queue: `/retry_queue.php`
 - Notifications: `/notifications.php`
 - System health: `/health.php`

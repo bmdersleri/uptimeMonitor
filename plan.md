@@ -1853,3 +1853,33 @@ The most important design principle is separation of responsibilities:
 - Admin pages should remain simple, secure, and practical.
 
 With this architecture, Ekont Uptime Monitor can become a useful internal monitoring tool for personal, academic, commercial, and customer-facing websites while remaining lightweight enough to run on existing hosting infrastructure.
+
+---
+
+## 31. Current Implementation Notes
+
+Current live target:
+
+```text
+https://www.kirbas.com/uptime
+```
+
+The project is currently implemented as a plain PHP application using SQLite on shared hosting. The operational link-scan module is now beyond the original MVP outline in several areas:
+
+- Link scan jobs can be triggered manually from `/link_scans.php`.
+- Manual scans run through a detached worker when the host supports shell execution.
+- The manual worker supports shared-hosting PHP-CGI/FastCGI behavior by accepting only shell-provided arguments or environment values, while still blocking browser execution.
+- Only one link-scan job runs at a time to reduce SQLite lock contention.
+- SQLite uses WAL mode and a busy timeout to improve reliability during scans and status polling.
+- Link scan jobs publish heartbeat/live-state data for the UI.
+- The link scan screen shows active progress, stalled/attention warnings, scan quality summaries, and readable URL-heavy job details.
+- Link scan job history, discovered links, broken links, and live scan files can be reset from an authenticated UI action without deleting users, monitors, uptime checks, incidents, notification logs, retry queue data, or ignore rules.
+
+The next major implementation phase should focus on report generation and delivery:
+
+- Daily operational summary report.
+- Weekly operational summary report.
+- Email delivery using the existing notification infrastructure.
+- Telegram delivery using the existing Telegram notifier path.
+- Report history screen with resend/download actions.
+- Cron workers for scheduled report generation.

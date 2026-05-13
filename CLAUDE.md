@@ -20,6 +20,7 @@ php database/create_admin.php    # create first admin user
 # Cron workers (manual invocation)
 php cron/check_uptime.php        # uptime checks
 php cron/scan_links.php          # link scanning
+php cron/run_manual_link_scan.php {monitor_id} {max_depth} # detached manual link scan worker
 php cron/retry_notifications.php # notification retries
 
 # Run a single test
@@ -74,6 +75,8 @@ Some repositories include inline `ensure*Column()` methods for lightweight schem
 - `UptimeChecker` — performs HTTP checks against monitors, updates check history, manages incident open/recovery lifecycle
 - `LinkScanner` — crawls same-host pages up to configurable depth, checks resources in parallel batches, discovers broken links
 - `LinkScanRunner` — wraps LinkScanner for both cron and manual (live-progress) scan execution
+- `LinkScanProcessLauncher` — starts manual link scans as detached workers and logs launch failures to `storage/logs/manual_link_scan_launch.log`
+- `LinkScanResetter` — clears link scan jobs, discovered links, broken links, and live state files while preserving users, monitors, uptime data, notification data, and ignore rules
 - `Notifier` — sends email (PHP `mail()`) and Telegram (bot API) notifications for incidents and broken-link summaries
 
 ### URL generation
@@ -91,6 +94,14 @@ Three CLI scripts meant to be invoked by system cron:
 - `scan_links.php` — queries monitors due for link scan, runs `LinkScanRunner`
 - `retry_notifications.php` — processes pending items in the notification retry queue
 
+Manual scans are started by `public/link_scan_run.php`. When shell execution is available, it delegates to `LinkScanProcessLauncher`, which starts `cron/run_manual_link_scan.php` outside the HTTP request. Shared hosting may execute `/usr/bin/php` as CGI/FastCGI instead of CLI; the manual worker therefore rejects direct browser execution but can accept shell-provided `$argv` or `UPTIME_MONITOR_ID` / `UPTIME_MAX_DEPTH` environment values.
+
+SQLite connections enable WAL mode and `busy_timeout` to reduce lock contention between link-scan workers, live status polling, and UI actions.
+
 ### Inline schema migration
 
 Pages that reference newer columns (e.g. `broken_links.ignored_at`) include `ensure*Columns()` functions that check `PRAGMA table_info()` and add missing columns on the fly. This avoids requiring a migration script on every deploy.
+
+### Link scan UI notes
+
+`public/link_scans.php` is URL-heavy. Keep open/detail actions styled with `.btn btn-small btn-open`, render long URLs in `.url-card` / `.url-link` blocks, and keep live recent links visually separated so scan results remain readable after large crawls.

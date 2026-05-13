@@ -692,6 +692,7 @@ foreach ($monitors as $m) {
                         </select>
                     </div>
                     <button class="btn btn-danger" type="button" id="bulk-clean-btn">Temizle</button>
+                    <button class="btn btn-danger" type="button" id="reset-scan-data-btn">Tüm Tarama Verilerini Sıfırla</button>
                 </div>
             </div>
         </section>
@@ -925,8 +926,11 @@ foreach ($monitors as $m) {
             var deleteFallbackUrl = <?= json_encode(url_for('/public/link_scan_delete.php')); ?>;
             var bulkDeleteUrl = <?= json_encode(url_for('/link_scan_bulk_delete.php')); ?>;
             var bulkDeleteFallbackUrl = <?= json_encode(url_for('/public/link_scan_bulk_delete.php')); ?>;
+            var resetUrl = <?= json_encode(url_for('/link_scan_reset.php')); ?>;
+            var resetFallbackUrl = <?= json_encode(url_for('/public/link_scan_reset.php')); ?>;
             var stopBtn = document.getElementById('scan-stop-btn');
             var bulkCleanBtn = document.getElementById('bulk-clean-btn');
+            var resetScanDataBtn = document.getElementById('reset-scan-data-btn');
             var cleanupRetention = document.getElementById('cleanup-retention');
             var runningJobId = 0;
             var hadRunningJob = false;
@@ -1411,6 +1415,36 @@ foreach ($monitors as $m) {
                         var msg = err && err.message ? err.message : 'Toplu temizlik isteği sırasında hata oluştu.';
                         setNotice('err', msg);
                         bulkCleanBtn.disabled = false;
+                    });
+                });
+            }
+
+            if (resetScanDataBtn) {
+                resetScanDataBtn.addEventListener('click', function () {
+                    if (!window.confirm('Tüm link scan job geçmişi ve tarama sonuçları sıfırlansın mı?')) {
+                        return;
+                    }
+                    if (!window.confirm('Bu işlem link_scan_jobs, discovered_links ve broken_links kayıtlarını siler. Monitörler ve ignore rules korunur. Devam edilsin mi?')) {
+                        return;
+                    }
+
+                    resetScanDataBtn.disabled = true;
+                    setNotice('ok', 'Tüm link scan verileri sıfırlanıyor...');
+
+                    postJson([resetUrl, resetFallbackUrl], new URLSearchParams())
+                    .then(function (data) {
+                        if (data && data.ok) {
+                            setNotice('ok', data.message || 'Link scan verileri sıfırlandı.');
+                            window.location.reload();
+                        } else {
+                            setNotice('err', (data && data.message) ? data.message : 'Link scan verileri sıfırlanamadı.');
+                            resetScanDataBtn.disabled = false;
+                        }
+                    })
+                    .catch(function (err) {
+                        var msg = err && err.message ? err.message : 'Sıfırlama isteği sırasında hata oluştu.';
+                        setNotice('err', msg);
+                        resetScanDataBtn.disabled = false;
                     });
                 });
             }

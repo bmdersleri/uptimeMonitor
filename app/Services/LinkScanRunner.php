@@ -754,6 +754,19 @@ final class LinkScanRunner
         if (is_file(self::cancelPathForJob($jobId))) {
             throw new RuntimeException('Canceled by user');
         }
+
+        try {
+            $stmt = $this->pdo->prepare('SELECT status FROM link_scan_jobs WHERE id = :id LIMIT 1');
+            $stmt->execute(['id' => $jobId]);
+            $row = $stmt->fetch();
+            if (!is_array($row) || (string) ($row['status'] ?? '') !== 'running') {
+                throw new RuntimeException('Canceled by user');
+            }
+        } catch (RuntimeException $e) {
+            throw $e;
+        } catch (Throwable $e) {
+            // Do not fail an active scan because a transient SQLite read is locked.
+        }
     }
 
     private function clearCancelRequest(int $jobId): void

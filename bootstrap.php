@@ -14,6 +14,7 @@ require_once __DIR__ . '/app/Repositories/NotificationRetryRepository.php';
 require_once __DIR__ . '/app/Services/AuthService.php';
 require_once __DIR__ . '/app/Services/LinkScanner.php';
 require_once __DIR__ . '/app/Services/LinkScanRunner.php';
+require_once __DIR__ . '/app/Services/LinkScanResetter.php';
 require_once __DIR__ . '/app/Services/Notifier.php';
 require_once __DIR__ . '/app/Services/UptimeChecker.php';
 
